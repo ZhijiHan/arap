@@ -1,5 +1,6 @@
-# Binaries
-bin/*
+# Build folder.
+build/*
+demo/build/*
 
 # Object files.
 *.o
@@ -9,5 +10,3 @@ bin/*
 
 # Model folders and files.
 model/*
-*.obj
-*.off
