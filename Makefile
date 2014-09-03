@@ -21,4 +21,4 @@ main.o: main.cc
 	$(CXX) $(CXXFLAGS) main.cc
 
 clean:
-	rm -rf *.o arap
+	rm -rf *.o $(BIN_ROOT)/*
