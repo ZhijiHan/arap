@@ -1,0 +1,13 @@
+# Binaries
+bin/*
+
+# Object files.
+*.o
+
+# Temporary files.
+*~
+
+# Model folders and files.
+model/*
+*.obj
+*.off
