@@ -22,13 +22,29 @@ typedef
   RotationList;
 
 const Eigen::RowVector3d sea_green(70./255.,252./255.,167./255.);
-Eigen::MatrixXd V,U;
+// Vertex matrix. V is the original vertices from .off file, and U is the
+// vertices updated in each frame.
+Eigen::MatrixXd V, U;
+// Face matrix. F is read from .off file.
 Eigen::MatrixXi F;
-Eigen::VectorXi S,b;
+// S is a column vector representing vertices with predefined coordinates in
+// each frame. S is read from .dmat file, whose file format can be found in
+// http://igl.ethz.ch/projects/libigl/file-formats/dmat.html. The dimension of
+// S is the same as the # of vertices. b contains the indices of those vertices
+// whose S is nonnegative.
+Eigen::VectorXi S, b;
 Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
 igl::ARAPData arap_data;
+
+// Color used to draw precomputed vertices.
+static const Eigen::RowVector3d kPurple(80.0 / 255.0,
+                                        64.0 / 255.0,
+                                        255.0 / 255.0);
+static const Eigen::RowVector3d kGold(255.0 / 255.0,
+                                      228.0 / 255.0,
+                                      58.0 / 255.0);
 
 bool pre_draw(igl::Viewer & viewer)
 {
@@ -67,6 +83,13 @@ bool pre_draw(igl::Viewer & viewer)
     }
     igl::arap_solve(bc,arap_data,U);
     viewer.data.set_vertices(U);
+    MatrixXd C(b.rows(), 3);
+    MatrixXd U2;
+    igl::slice(U, b, 1, U2);
+    for (int v = 0; v < b.rows(); ++v) {
+      C.row(v) = kPurple;
+    }
+    viewer.data.set_points(U2, C);
     viewer.data.compute_normals();
   if(viewer.core.is_animating)
   {
@@ -86,43 +109,49 @@ bool key_down(igl::Viewer &viewer, unsigned char key, int mods)
   return false;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   using namespace Eigen;
   using namespace std;
-  igl::readOFF("model/decimated-knight.off",V,F);
-  U=V;
-  igl::readDMAT("model/decimated-knight-selection.dmat",S);
+  // Read V and F from file.
+  igl::readOFF("model/decimated-knight.off", V, F);
+  // U is initialized with V, so V will be the initial state of vertices during
+  // the animation.
+  U = V;
 
-  // vertices in selection
-  igl::colon<int>(0,V.rows()-1,b);
-  b.conservativeResize(stable_partition( b.data(), b.data()+b.size(),
-   [](int i)->bool{return S(i)>=0;})-b.data());
+  // Read S from file. See comments about S above.
+  igl::readDMAT("model/decimated-knight-selection.dmat", S);
+  // This works the same as the Matlab code: b = 0 : V.rows() - 1.
+  igl::colon<int>(0, V.rows() - 1, b);
+  // stable_partition will partition b such that elements with S(i) >= 0 are in
+  // front of others. Moreover, if two elements both satisfy S(i) >= 0, their
+  // order are kept after the partition.
+  // conservativeresize will resize the vector and keep the old values.
+  // Example:
+  // b = 0 1 2  3 4  5 6
+  // S = 0 1 1 -1 1 -1 1
+  // After stable_partion:
+  // b = 0 1 2 4 6 3 5
+  // After conservativeresize:
+  // b = 0 1 2 4 6
+  b.conservativeResize(stable_partition(b.data(), b.data() + b.size(),
+    [](int i)->bool { return S(i) >= 0; }) - b.data());
   // Centroid
   mid = 0.5*(V.colwise().maxCoeff() + V.colwise().minCoeff());
   // Precomputation
   arap_data.max_iter = 100;
   igl::arap_precomputation(V,F,V.cols(),b,arap_data);
 
-  // Set color based on selection
-  MatrixXd C(F.rows(),3);
-  RowVector3d purple(80.0/255.0,64.0/255.0,255.0/255.0);
-  RowVector3d gold(255.0/255.0,228.0/255.0,58.0/255.0);
-  for(int f = 0;f<F.rows();f++)
-  {
-    if( S(F(f,0))>=0 && S(F(f,1))>=0 && S(F(f,2))>=0)
-    {
-      C.row(f) = purple;
-    }else
-    {
-      C.row(f) = gold;
-    }
+  // Set colors for each vertices.
+  MatrixXd C(b.rows(), 3);
+  MatrixXd U2;
+  igl::slice(U, b, 1, U2);
+  for (int v = 0; v < b.rows(); ++v) {
+    C.row(v) = kPurple;
   }
 
-  // Plot the mesh with pseudocolors
   igl::Viewer viewer;
   viewer.data.set_mesh(U, F);
-  viewer.data.set_colors(C);
+  viewer.data.set_points(U2, C);
   viewer.callback_pre_draw = &pre_draw;
   viewer.callback_key_down = &key_down;
   viewer.core.is_animating = false;
