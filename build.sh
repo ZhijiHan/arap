@@ -1,10 +1,9 @@
-cd build
-make clean
-cd ../
-rm -rf build
-mkdir build
+#!/bin/bash
+# Change files below for different models.
+OFF_FILE_NAME=/home/taodu/research/arap/model/decimated-knight.off
+DMAT_FILE_NAME=/home/taodu/research/arap/model/decimated-knight-selection.dmat
+
 cd build
 cmake -DCMAKE_BUILD_TYPE=Release ../
 make
-cd ../
-./build/demo_bin
+./demo_bin $OFF_FILE_NAME $DMAT_FILE_NAME

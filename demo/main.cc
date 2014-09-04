@@ -93,7 +93,7 @@ bool pre_draw(igl::Viewer & viewer)
   return false;
 }
 
-bool key_down(igl::Viewer &viewer, unsigned char key, int mods) {
+bool key_down(igl::Viewer& viewer, unsigned char key, int mods) {
   switch(key) {
     case ' ':
       viewer.core.is_animating = !viewer.core.is_animating;
@@ -102,15 +102,22 @@ bool key_down(igl::Viewer &viewer, unsigned char key, int mods) {
   return false;
 }
 
+// Usage: ./demo_bin [.off file name] [.dmat file name].
 int main(int argc, char *argv[]) {
+  if (argc < 2) {
+    std::cout << "Not enough input parameters." << std::endl
+              << "Usage: demo_bin [.off file name] [.dmat file name]."
+              << std::endl;
+    return 0;
+  }
   // Read V and F from file.
-  igl::readOFF("model/decimated-knight.off", V, F);
+  igl::readOFF(argv[1], V, F);
   // U is initialized with V and gets updated in every frame. V will be the
   // initial state of vertices during the animation.
   U = V;
 
   // Read S from file. See comments about S above.
-  igl::readDMAT("model/decimated-knight-selection.dmat", S);
+  igl::readDMAT(argv[2], S);
   // This works the same as the Matlab code: b = 0 : V.rows() - 1.
   igl::colon<int>(0, V.rows() - 1, b);
   // stable_partition will partition b such that elements with S(i) >= 0 are in
