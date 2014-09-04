@@ -27,6 +27,8 @@ const Eigen::RowVector3d sea_green(70./255.,252./255.,167./255.);
 Eigen::MatrixXd V, U;
 // Face matrix. F is read from .off file.
 Eigen::MatrixXi F;
+// Color matrix used to display selected points from S and b below.
+Eigen::MatrixXd C;
 // S is a column vector representing vertices with predefined coordinates in
 // each frame. S is read from .dmat file, whose file format can be found in
 // http://igl.ethz.ch/projects/libigl/file-formats/dmat.html. The dimension of
@@ -83,12 +85,8 @@ bool pre_draw(igl::Viewer & viewer)
     }
     igl::arap_solve(bc,arap_data,U);
     viewer.data.set_vertices(U);
-    MatrixXd C(b.rows(), 3);
     MatrixXd U2;
     igl::slice(U, b, 1, U2);
-    for (int v = 0; v < b.rows(); ++v) {
-      C.row(v) = kPurple;
-    }
     viewer.data.set_points(U2, C);
     viewer.data.compute_normals();
   if(viewer.core.is_animating)
@@ -142,12 +140,12 @@ int main(int argc, char *argv[]) {
   igl::arap_precomputation(V,F,V.cols(),b,arap_data);
 
   // Set colors for each vertices.
-  MatrixXd C(b.rows(), 3);
+  C.resize(b.rows(), 3);
+  for (int i = 0; i < b.rows(); ++i) {
+    C.row(i) = kPurple;
+  }
   MatrixXd U2;
   igl::slice(U, b, 1, U2);
-  for (int v = 0; v < b.rows(); ++v) {
-    C.row(v) = kPurple;
-  }
 
   igl::Viewer viewer;
   viewer.data.set_mesh(U, F);
