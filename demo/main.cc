@@ -1,25 +1,22 @@
+// C++ standard library
+#include <algorithm>
+#include <iostream>
+#include <vector>
+
+#include <Eigen/Geometry>
+#include <Eigen/StdVector>
 #include <igl/colon.h>
+#include <igl/deform_skeleton.h>
 #include <igl/directed_edge_orientations.h>
 #include <igl/directed_edge_parents.h>
-#include <igl/forward_kinematics.h>
-#include <igl/PI.h>
-#include <igl/lbs_matrix.h>
-#include <igl/deform_skeleton.h>
 #include <igl/dqs.h>
+#include <igl/forward_kinematics.h>
+#include <igl/lbs_matrix.h>
+#include <igl/PI.h>
 #include <igl/readDMAT.h>
 #include <igl/readOFF.h>
 #include <igl/svd3x3/arap.h>
 #include <igl/viewer/Viewer.h>
-
-#include <Eigen/Geometry>
-#include <Eigen/StdVector>
-#include <vector>
-#include <algorithm>
-#include <iostream>
-
-typedef
-  std::vector<Eigen::Quaterniond,Eigen::aligned_allocator<Eigen::Quaterniond> >
-  RotationList;
 
 const Eigen::RowVector3d sea_green(70./255.,252./255.,167./255.);
 // Vertex matrix. V is the original vertices from .off file, and U is the
@@ -96,10 +93,8 @@ bool pre_draw(igl::Viewer & viewer)
   return false;
 }
 
-bool key_down(igl::Viewer &viewer, unsigned char key, int mods)
-{
-  switch(key)
-  {
+bool key_down(igl::Viewer &viewer, unsigned char key, int mods) {
+  switch(key) {
     case ' ':
       viewer.core.is_animating = !viewer.core.is_animating;
       return true;
@@ -108,12 +103,10 @@ bool key_down(igl::Viewer &viewer, unsigned char key, int mods)
 }
 
 int main(int argc, char *argv[]) {
-  using namespace Eigen;
-  using namespace std;
   // Read V and F from file.
   igl::readOFF("model/decimated-knight.off", V, F);
-  // U is initialized with V, so V will be the initial state of vertices during
-  // the animation.
+  // U is initialized with V and gets updated in every frame. V will be the
+  // initial state of vertices during the animation.
   U = V;
 
   // Read S from file. See comments about S above.
@@ -131,7 +124,7 @@ int main(int argc, char *argv[]) {
   // b = 0 1 2 4 6 3 5
   // After conservativeresize:
   // b = 0 1 2 4 6
-  b.conservativeResize(stable_partition(b.data(), b.data() + b.size(),
+  b.conservativeResize(std::stable_partition(b.data(), b.data() + b.size(),
     [](int i)->bool { return S(i) >= 0; }) - b.data());
   // Centroid
   mid = 0.5*(V.colwise().maxCoeff() + V.colwise().minCoeff());
@@ -139,22 +132,28 @@ int main(int argc, char *argv[]) {
   arap_data.max_iter = 100;
   igl::arap_precomputation(V,F,V.cols(),b,arap_data);
 
-  // Set colors for each vertices.
+  // Set colors for selected vertices.
   C.resize(b.rows(), 3);
   for (int i = 0; i < b.rows(); ++i) {
     C.row(i) = kPurple;
   }
-  MatrixXd U2;
+  // Extract selected vertices from U.
+  Eigen::MatrixXd U2;
+  // U2 = U(b, :).
   igl::slice(U, b, 1, U2);
 
   igl::Viewer viewer;
+  // Draw the mesh.
   viewer.data.set_mesh(U, F);
+  // Draw overlays: U2 are selected vertices whose color are set by C.
   viewer.data.set_points(U2, C);
+  // pre_draw is called before every frame. Use this function to update
+  // vertices.
   viewer.callback_pre_draw = &pre_draw;
   viewer.callback_key_down = &key_down;
   viewer.core.is_animating = false;
   viewer.core.animation_max_fps = 30.;
-  cout<<
-    "Press [space] to toggle animation"<<endl;
+  std::cout << "Press [space] to toggle animation" << std::endl;
   viewer.launch();
+  return 0;
 }
