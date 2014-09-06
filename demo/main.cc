@@ -1,3 +1,5 @@
+#include "arapsolver.h"
+
 // C++ standard library
 #include <algorithm>
 #include <iostream>
@@ -36,6 +38,8 @@ Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
 igl::ARAPData arap_data;
+// Our own implementation of ARAP.
+arap::demo::ArapSolver arap_solver;
 
 // Color used to draw precomputed vertices.
 static const Eigen::RowVector3d kPurple(80.0 / 255.0,
@@ -76,8 +80,10 @@ bool pre_draw(igl::Viewer & viewer)
     }
   }
   // Solve the arap problem.
-  igl::arap_solve(bc, arap_data, U);
-  viewer.data.set_vertices(U);
+  // Comment out this line and implement our own version.
+  //igl::arap_solve(bc, arap_data, U);
+  arap_solver.Solve(bc);
+  viewer.data.set_vertices(arap_solver.GetVertices());
   viewer.data.set_points(bc, C);
   viewer.data.compute_normals();
   // Update anim_t for next frame.
@@ -135,6 +141,9 @@ int main(int argc, char *argv[]) {
   // "As-Rigid-As-Possible Surface Modeling".
   arap_data.energy = igl::ARAP_ENERGY_TYPE_SPOKES;
   igl::arap_precomputation(V, F, V.cols(), b, arap_data);
+  // Add our own pre computation implementation here.
+  arap_solver.RegisterData(V, F, b, 100);
+  arap_solver.Precompute();
 
   // Set colors for selected vertices.
   C.resize(b.rows(), 3);

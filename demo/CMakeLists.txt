@@ -5,6 +5,7 @@ include("../CMakeLists.shared")
 
 set(SOURCES
 ${PROJECT_SOURCE_DIR}/main.cc
+${PROJECT_SOURCE_DIR}/arapsolver.cc
 )
 
 add_executable(${PROJECT_NAME}_bin ${SOURCES} ${SHARED_SOURCES})
