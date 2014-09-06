@@ -47,6 +47,8 @@ static const Eigen::RowVector3d kGold(255.0 / 255.0,
 
 bool pre_draw(igl::Viewer & viewer)
 {
+  if (!viewer.core.is_animating)
+    return false;
   Eigen::MatrixXd bc(b.size(),V.cols());
   for(int i = 0; i < b.size(); ++i) {
     bc.row(i) = V.row(b(i));
@@ -78,8 +80,8 @@ bool pre_draw(igl::Viewer & viewer)
   viewer.data.set_vertices(U);
   viewer.data.set_points(bc, C);
   viewer.data.compute_normals();
-  if (viewer.core.is_animating)
-    anim_t += anim_t_dir;
+  // Update anim_t for next frame.
+  anim_t += anim_t_dir;
   return false;
 }
 
