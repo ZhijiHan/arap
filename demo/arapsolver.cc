@@ -1,7 +1,10 @@
 #include "arapsolver.h"
 
 // C++ standard library
+#include <iostream>
 #include <vector>
+
+#include "igl/slice.h"
 
 namespace arap {
 namespace demo {
@@ -29,6 +32,26 @@ void ArapSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
 
+  // Compute free_.
+  int selected_num = selected_.size();
+  int free_num = vertex_num - selected_num;
+  free_.resize(free_num);
+  int j = 0, k = 0;
+  for (int i = 0; i < vertex_num; ++i) {
+    if (i != selected_(j)) {
+      free_(k) = i;
+      ++k;
+    } else {
+      ++j;
+    }
+  }
+  // Sanity check the sizes of selected_ and free_ are correct.
+  if (j != selected_num || k != free_num) {
+    std::cout << "Fail to compute free_ in ArapSolver: dimension mismatch."
+              << std::endl;
+    return;
+  }
+
   // Compute cot_weight_.
   cot_weight_.resize(vertex_num, vertex_num);
   // An index map to help mapping from one vertex to the corresponding edge.
@@ -48,13 +71,16 @@ void ArapSolver::Precompute() {
       double half_cot = cotangent(i) / 2.0;
       cot_weight_.coeffRef(first, second) += half_cot;
       cot_weight_.coeffRef(second, first) += half_cot;
-      // Note that cot_weight_(i, i) is the sum of all the cot_weight_(i, j).
-      cot_weight_.coeffRef(first, first) += half_cot;
-      cot_weight_.coeffRef(second, second) += half_cot;
+      // Note that cot_weight_(i, i) is the sum of all the -cot_weight_(i, j).
+      cot_weight_.coeffRef(first, first) -= half_cot;
+      cot_weight_.coeffRef(second, second) -= half_cot;
     }
   }
 
-
+  // Compute lb_operator_. This matrix can be computed by extracting free_ rows
+  // and columns from -cot_weight_.
+  igl::slice(cot_weight_, free_, free_, lb_operator_);
+  lb_operator_ *= -1.0;
 }
 
 void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {

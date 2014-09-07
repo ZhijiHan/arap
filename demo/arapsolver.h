@@ -47,6 +47,9 @@ class ArapSolver {
   // selected_ is a vector no longer than the # of vertices. It contains the
   // indices of the vertices that we want to fix during the deformation.
   Eigen::VectorXi selected_;
+  // free_ is the indices of free vertices. i.e., the union of selected_ and
+  // free_ is { 1, 2, 3, ..., vertices_.row() - 1 }.
+  Eigen::VectorXi free_;
 
   // This is a sparse matrix used to store the cotangent weight. The # of rows
   // and columns equals to the # of vertices, i.e., vertices_.rows(). For any i
@@ -56,8 +59,13 @@ class ArapSolver {
   //   cot_weight_(i, j) = 1/2(cot alpha_ij + cot beta_ij).
   // Note that cot_weight_(i, j) = cot_weight_(j, i), or cot_weight_ is
   // symmetric.
-  // If i == j, then cot_weight_(i, i) is defined as the sum of all the w_ij.
+  // If i == j, then cot_weight_(i, i) is defined as the sum of all the -w_ij.
+  // The negative sign is intentionally added to help compute lb_operator_.
   Eigen::SparseMatrix<double> cot_weight_;
+
+  // The discrete Laplace-Beltrami operator in the left hand side of the linear
+  // system defined in equation (9) in the paper.
+  Eigen::SparseMatrix<double> lb_operator_;
 
   // Max number of iterations used to solve ARAP.
   int max_iteration_;
