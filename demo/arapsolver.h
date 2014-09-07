@@ -1,8 +1,9 @@
 #ifndef _ARAP_DEMO_ARAPSOLVER_H_
 #define _ARAP_DEMO_ARAPSOLVER_H_
 
-#include <Eigen/Dense>
-#include <Eigen/Sparse>
+#include "Eigen/CholmodSupport"
+#include "Eigen/Dense"
+#include "Eigen/Sparse"
 
 namespace arap {
 namespace demo {
@@ -66,6 +67,10 @@ class ArapSolver {
   // The discrete Laplace-Beltrami operator in the left hand side of the linear
   // system defined in equation (9) in the paper.
   Eigen::SparseMatrix<double> lb_operator_;
+
+  // Sparse linear solver for equation (9) in the paper. Use Cholmod from
+  // SuiteSparse.
+  Eigen::CholmodSupernodalLLT<Eigen::SparseMatrix<double>> solver_;
 
   // Max number of iterations used to solve ARAP.
   int max_iteration_;

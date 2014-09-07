@@ -81,10 +81,17 @@ void ArapSolver::Precompute() {
   // and columns from -cot_weight_.
   igl::slice(cot_weight_, free_, free_, lb_operator_);
   lb_operator_ *= -1.0;
+
+  // Cholesky factorization.
+  solver_.compute(lb_operator_);
+  if (solver_.info() != Eigen::Success) {
+    // Failed to decompose lb_operator_.
+    std::cout << "Fail to do Cholesky factorization." << std::endl;
+    return;
+  }
 }
 
 void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
-
 }
 
 Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {
