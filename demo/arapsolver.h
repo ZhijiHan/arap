@@ -50,13 +50,14 @@ class ArapSolver {
 
   // This is a sparse matrix used to store the cotangent weight. The # of rows
   // and columns equals to the # of vertices, i.e., vertices_.rows(). For any i
-  // and j, the definition of cot_weight(i, j) is as follows:
-  // If i != j and (i, j) is not an edge, cot_weight(i, j) = 0.
-  // If i != j and (i, j) is an edge, then cot_weight(i, j) equals to:
-  //   cot_weight(i, j) = 1/2(cot alpha_ij + cot beta_ij).
-  // Note that cot_weight(i, j) = cot_weight(j, i), or cot_weight is symmetric.
-  // If i == j, then cot_weight(i, i) is defined as the sum of all the w_ij.
-  Eigen::SparseMatrix<double> cot_weight;
+  // and j, the definition of cot_weight_(i, j) is as follows:
+  // If i != j and (i, j) is not an edge, cot_weight_(i, j) = 0.
+  // If i != j and (i, j) is an edge, then cot_weight_(i, j) equals to:
+  //   cot_weight_(i, j) = 1/2(cot alpha_ij + cot beta_ij).
+  // Note that cot_weight_(i, j) = cot_weight_(j, i), or cot_weight_ is
+  // symmetric.
+  // If i == j, then cot_weight_(i, i) is defined as the sum of all the w_ij.
+  Eigen::SparseMatrix<double> cot_weight_;
 
   // Max number of iterations used to solve ARAP.
   int max_iteration_;

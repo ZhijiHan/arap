@@ -1,5 +1,8 @@
 #include "arapsolver.h"
 
+// C++ standard library
+#include <vector>
+
 namespace arap {
 namespace demo {
 
@@ -23,7 +26,35 @@ bool ArapSolver::RegisterData(const Eigen::MatrixXd& vertices,
 }
 
 void ArapSolver::Precompute() {
-  // Compute cot_weight.
+  int vertex_num = vertices_.rows();
+  int face_num = faces_.rows();
+
+  // Compute cot_weight_.
+  cot_weight_.resize(vertex_num, vertex_num);
+  // An index map to help mapping from one vertex to the corresponding edge.
+  int index_map[3][2] = { {1, 2}, {0, 2}, {0, 1} };
+  // Loop over all the faces.
+  for (int f = 0; f < face_num; ++f) {
+    // Get the cotangent value with that face.
+    Eigen::Vector3d cotangent = ComputeCotangent(f);
+    // Loop over the three vertices within the same triangle.
+    // i = 0 => A.
+    // i = 1 => B.
+    // i = 2 => C.
+    for (int i = 0; i < 3; ++i) {
+      // Indices of the two vertices in the edge corresponding to vertex i.
+      int first = faces_(f, index_map[i][0]);
+      int second = faces_(f, index_map[i][1]);
+      double half_cot = cotangent(i) / 2.0;
+      cot_weight_.coeffRef(first, second) += half_cot;
+      cot_weight_.coeffRef(second, first) += half_cot;
+      // Note that cot_weight_(i, i) is the sum of all the cot_weight_(i, j).
+      cot_weight_.coeffRef(first, first) += half_cot;
+      cot_weight_.coeffRef(second, second) += half_cot;
+    }
+  }
+
+
 }
 
 void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
