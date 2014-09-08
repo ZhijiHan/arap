@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "igl/slice.h"
+#include "igl/svd3x3/polar_svd3x3.h"
 
 namespace arap {
 namespace demo {
@@ -38,11 +39,11 @@ void ArapSolver::Precompute() {
   free_.resize(free_num);
   int j = 0, k = 0;
   for (int i = 0; i < vertex_num; ++i) {
-    if (i != selected_(j)) {
+    if (j < selected_num && i == selected_(j)) {
+      ++j;
+    } else {
       free_(k) = i;
       ++k;
-    } else {
-      ++j;
     }
   }
   // Sanity check the sizes of selected_ and free_ are correct.
@@ -92,6 +93,70 @@ void ArapSolver::Precompute() {
 }
 
 void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
+  // The optimization goes alternatively between solving vertices and
+  // rotations.
+  // Step 0: replace some vertices in vertices_ with fixed_vertices.
+  // Step 1: given vertices_, solve the rotations for all the vertices by
+  // polar_svd.
+  // Step 2: update the rhs in equation (9) with updated rotations.
+  // Step 3: repeat Step 1 and Step 2 for max_iteration times.
+
+  // Step 0: replace vertices with fixed_vertices.
+  int fixed_num = selected_.size();
+  // Sanity check for the # of vertices in fixed_vertices.
+  if (fixed_vertices.rows() != fixed_num) {
+    std::cout << "Fail to solve: number of fixed vertices mismatch."
+              << std::endl;
+    return;
+  }
+  Eigen::MatrixXd vertices_update = vertices_;
+  for (int i = 0; i < fixed_num; ++i) {
+    vertices_update.row(selected_(i)) = fixed_vertices.row(i);
+  }
+
+  int iter = 0;
+  int vertex_num = vertices_.rows();
+  int face_num = faces_.rows();
+  // Initialize rotations_ with Identity matrices.
+  rotations_.clear();
+  rotations_.resize(vertex_num, Eigen::Matrix3d::Identity());
+  // A temporary vector to hold all the edge products for all the vertices.
+  // This is the S matrix in equation (5).
+  std::vector<Eigen::Matrix3d> edge_product;
+  // edge_map is used for looping over three edges in a triangle.
+  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
+  while (iter < max_iteration_) {
+    // Step 1: solve rotations by polar_svd.
+    // Clear edge_product.
+    edge_product.clear();
+    edge_product.resize(vertex_num, Eigen::Matrix3d::Zero());
+    for (int f = 0; f < face_num; ++f) {
+      // Loop over all the edges in the mesh.
+      for (int e = 0; e < 3; ++e) {
+        int first = faces_(f, edge_map[e][0]);
+        int second = faces_(f, edge_map[e][1]);
+        // Now we have got an edge from first to second.
+        Eigen::Vector3d edge = vertices_.row(first) - vertices_.row(second);
+        Eigen::Vector3d edge_update
+            = vertices_update.row(first) - vertices_update.row(second);
+        double weight = cot_weight_.coeff(first, second);
+        edge_product[first] += weight * edge * edge_update.transpose();
+      }
+    }
+    for (int v = 0; v < vertex_num; ++v) {
+      Eigen::Matrix3d rotation;
+      igl::polar_svd3x3(edge_product[v], rotation);
+      rotations_[v] = rotation.transpose();
+    }
+
+    // Step 2:
+
+    // Update vertices_.
+    vertices_ = vertices_update;
+
+    // Increment.
+    ++iter;
+  }
 }
 
 Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {

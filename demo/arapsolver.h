@@ -68,6 +68,9 @@ class ArapSolver {
   // system defined in equation (9) in the paper.
   Eigen::SparseMatrix<double> lb_operator_;
 
+  // A vector to store rotations for all the vertices.
+  std::vector<Eigen::Matrix3d> rotations_;
+
   // Sparse linear solver for equation (9) in the paper. Use Cholmod from
   // SuiteSparse.
   Eigen::CholmodSupernodalLLT<Eigen::SparseMatrix<double>> solver_;
