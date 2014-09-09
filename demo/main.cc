@@ -20,7 +20,7 @@
 #include <igl/svd3x3/arap.h>
 #include <igl/viewer/Viewer.h>
 
-const Eigen::RowVector3d sea_green(70./255.,252./255.,167./255.);
+const Eigen::RowVector3d sea_green(70. / 255., 252. / 255., 167. / 255.);
 // Vertex matrix. V is the original vertices from .off file, and U is the
 // vertices updated in each frame.
 Eigen::MatrixXd V, U;
@@ -49,11 +49,11 @@ static const Eigen::RowVector3d kGold(255.0 / 255.0,
                                       228.0 / 255.0,
                                       58.0 / 255.0);
 
-bool pre_draw(igl::Viewer & viewer)
+bool pre_draw(igl::Viewer& viewer)
 {
   if (!viewer.core.is_animating)
     return false;
-  Eigen::MatrixXd bc(b.size(),V.cols());
+  Eigen::MatrixXd bc(b.size(), V.cols());
   for(int i = 0; i < b.size(); ++i) {
     bc.row(i) = V.row(b(i));
     switch(S(b(i))) {
