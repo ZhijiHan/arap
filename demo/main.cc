@@ -21,9 +21,8 @@
 #include <igl/viewer/Viewer.h>
 
 // Change this to 0 if we don't want to use IGL's implementation.
-#define USE_IGL_AS_BENCHMARK 0
+#define USE_IGL_AS_BENCHMARK 1
 
-const Eigen::RowVector3d sea_green(70. / 255., 252. / 255., 167. / 255.);
 // Vertex matrix. V is the original vertices from .off file, and U is the
 // vertices updated in each frame.
 Eigen::MatrixXd V, U;
@@ -53,6 +52,8 @@ static const Eigen::RowVector3d kPurple(80.0 / 255.0,
 static const Eigen::RowVector3d kGold(255.0 / 255.0,
                                       228.0 / 255.0,
                                       58.0 / 255.0);
+// Error threshold.
+static const double kErrorPerVertex = 1e-5;
 
 bool pre_draw(igl::Viewer& viewer)
 {
@@ -95,7 +96,8 @@ bool pre_draw(igl::Viewer& viewer)
   // Compare the ground truth and our solution.
   double abs_error = (U - solution).norm();
   double relative_error = abs_error / U.norm();
-  if (abs_error > 1e-6) {
+  int vertex_num = V.rows();
+  if (abs_error > kErrorPerVertex * vertex_num) {
     std::cout << "Fail to pass the test:" << std::endl
               << "Absolute error = " << abs_error << " "
               << "Relative error = " << relative_error << std::endl;

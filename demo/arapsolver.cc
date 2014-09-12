@@ -146,7 +146,11 @@ void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
               << std::endl;
     return;
   }
-  vertices_updated_ = vertices_;
+  if (vertices_updated_.size() == 0) {
+    // The first time to compute vertices_updated_, use vertices_ to initialize
+    // vertices_updated_.
+    vertices_updated_ = vertices_;
+  }
   for (int i = 0; i < fixed_num; ++i) {
     vertices_updated_.row(fixed_(i)) = fixed_vertices.row(i);
   }
