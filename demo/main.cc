@@ -55,8 +55,7 @@ static const Eigen::RowVector3d kGold(255.0 / 255.0,
 // Error threshold.
 static const double kErrorPerVertex = 1e-5;
 
-bool pre_draw(igl::Viewer& viewer)
-{
+bool pre_draw(igl::Viewer& viewer) {
   if (!viewer.core.is_animating)
     return false;
   Eigen::MatrixXd bc(b.size(), V.cols());
@@ -112,12 +111,13 @@ bool pre_draw(igl::Viewer& viewer)
 }
 
 bool key_down(igl::Viewer& viewer, unsigned char key, int mods) {
-  switch(key) {
+  switch (key) {
     case ' ':
       viewer.core.is_animating = !viewer.core.is_animating;
       return true;
+    default:
+      return false;
   }
-  return false;
 }
 
 // Usage: ./demo_bin [.off file name] [.dmat file name].
