@@ -20,6 +20,9 @@
 #include <igl/svd3x3/arap.h>
 #include <igl/viewer/Viewer.h>
 
+// Change this to 0 if we don't want to use IGL's implementation.
+#define USE_IGL_AS_BENCHMARK 0
+
 const Eigen::RowVector3d sea_green(70. / 255., 252. / 255., 167. / 255.);
 // Vertex matrix. V is the original vertices from .off file, and U is the
 // vertices updated in each frame.
@@ -37,7 +40,9 @@ Eigen::VectorXi S, b;
 Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
+#if USE_IGL_AS_BENCHMARK
 igl::ARAPData arap_data;
+#endif
 // Our own implementation of ARAP.
 arap::demo::ArapSolver arap_solver;
 
@@ -79,11 +84,24 @@ bool pre_draw(igl::Viewer& viewer)
         break;
     }
   }
+#if USE_IGL_AS_BENCHMARK
   // Solve the arap problem.
-  // Comment out this line and implement our own version.
-  //igl::arap_solve(bc, arap_data, U);
+  igl::arap_solve(bc, arap_data, U);
+  // The above U is the ground truth solution.
+#endif
   arap_solver.Solve(bc);
-  viewer.data.set_vertices(arap_solver.GetVertices());
+  Eigen::MatrixXd solution = arap_solver.GetVertexSolution();
+#if USE_IGL_AS_BENCHMARK
+  // Compare the ground truth and our solution.
+  double abs_error = (U - solution).norm();
+  double relative_error = abs_error / U.norm();
+  if (abs_error > 1e-6) {
+    std::cout << "Fail to pass the test:" << std::endl
+              << "Absolute error = " << abs_error << " "
+              << "Relative error = " << relative_error << std::endl;
+  }
+#endif
+  viewer.data.set_vertices(solution);
   viewer.data.set_points(bc, C);
   viewer.data.compute_normals();
   // Update anim_t for next frame.
@@ -135,12 +153,14 @@ int main(int argc, char *argv[]) {
   // during the animation.
   mid = 0.5 * (V.colwise().maxCoeff() + V.colwise().minCoeff());
 
+#if USE_IGL_AS_BENCHMARK
   // Set the max iteration during the optimization to be 100.
   arap_data.max_iter = 100;
   // Set the energy type to be the one used in Sorkine and Alexa's paper
   // "As-Rigid-As-Possible Surface Modeling".
   arap_data.energy = igl::ARAP_ENERGY_TYPE_SPOKES;
   igl::arap_precomputation(V, F, V.cols(), b, arap_data);
+#endif
   // Add our own pre computation implementation here.
   arap_solver.RegisterData(V, F, b, 100);
   arap_solver.Precompute();
