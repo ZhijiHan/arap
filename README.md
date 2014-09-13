@@ -6,6 +6,8 @@ This small project implements the algorithm described in the paper [As-Rigid-As-
 
 ## How to run the demo
 
+Demos can be found in [this youtube link](https://www.youtube.com/watch?v=uK000vVJCes). Moreover, libigl's implementation can be found [here](https://www.youtube.com/watch?v=-BQWvz1zyOI).
+
 Unfortunately you have to configure libigl and Eigen first. Put them in any folder you want, and change any relevant path in all the cmake files in libigl and this project. Moreover, make sure you can use all the GL libs correctly (glew, glfw, etc).
 
 The mesh files used in this demo is from libigl's tutorials. Please copy them into some places you like, and change file paths in build.sh accordingly.
