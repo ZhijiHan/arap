@@ -53,7 +53,7 @@ static const Eigen::RowVector3d kGold(255.0 / 255.0,
                                       228.0 / 255.0,
                                       58.0 / 255.0);
 // Error threshold.
-static const double kErrorPerVertex = 1e-5;
+static const double kErrorPerVertexCoord = 1e-8;
 
 bool pre_draw(igl::Viewer& viewer) {
   if (!viewer.core.is_animating)
@@ -96,7 +96,8 @@ bool pre_draw(igl::Viewer& viewer) {
   double abs_error = (U - solution).norm();
   double relative_error = abs_error / U.norm();
   int vertex_num = V.rows();
-  if (abs_error > kErrorPerVertex * vertex_num) {
+  // The norm method in Eigen returns Frobenius norm for matrices.
+  if (abs_error > sqrt(3 * vertex_num * kErrorPerVertexCoord)) {
     std::cout << "Fail to pass the test:" << std::endl
               << "Absolute error = " << abs_error << " "
               << "Relative error = " << relative_error << std::endl;
