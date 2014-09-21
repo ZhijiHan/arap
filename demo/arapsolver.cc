@@ -251,7 +251,7 @@ Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {
   // The triangle is defined as follows:
   //            A
   //           /  -
-  //        c /    - b
+  //        c /     - b
   //         /        -
   //        /    a      -
   //       B--------------C
