@@ -161,8 +161,6 @@ void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
   // Initialize rotations_ with Identity matrices.
   rotations_.clear();
   rotations_.resize(vertex_num, Eigen::Matrix3d::Identity());
-  // The initial energy.
-  //std::cout << "Initial energy: " << ComputeEnergy() << std::endl;
 
   // A temporary vector to hold all the edge products for all the vertices.
   // This is the S matrix in equation (5).
@@ -192,8 +190,6 @@ void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
       igl::polar_svd3x3(edge_product[v], rotation);
       rotations_[v] = rotation.transpose();
     }
-    //std::cout << "Energy after updating rotations: " << ComputeEnergy()
-    //          << std::endl;
     // Step 2: compute the rhs in equation (9).
     int free_num = free_.size();
     // The right hand side of equation (9). The x, y and z coordinates are
@@ -239,8 +235,6 @@ void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
         vertices_updated_(vertex_id, i) = solution(j);
       }
     }
-    //std::cout << "Energy after solving sparse linear system: "
-    //          << ComputeEnergy() << std::endl;
     // Increment.
     ++iter;
   }
