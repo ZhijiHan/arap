@@ -13,79 +13,6 @@ namespace demo {
 ArapSolver::ArapSolver() {
 }
 
-// If it is the first time to register data, return true; else return false.
-bool ArapSolver::RegisterData(const Eigen::MatrixXd& vertices,
-    const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
-    int max_iteration) {
-  static bool registered = false;
-  if (!registered) {
-    registered = true;
-    vertices_ = vertices;
-    faces_ = faces;
-    fixed_ = fixed;
-    max_iteration_ = max_iteration;
-    // Compute free_.
-    int vertex_num = vertices_.rows();
-    int fixed_num = fixed_.size();
-    int free_num = vertex_num - fixed_num;
-    free_.resize(free_num);
-    int j = 0, k = 0;
-    for (int i = 0; i < vertex_num; ++i) {
-      if (j < fixed_num && i == fixed_(j)) {
-        ++j;
-      } else {
-        free_(k) = i;
-        ++k;
-      }
-    }
-    // Sanity check the sizes of fixed_ and free_ are correct.
-    if (j != fixed_num || k != free_num) {
-      std::cout << "Fail to compute free_ in ArapSolver: dimension mismatch."
-                << std::endl;
-      return false;
-    }
-    // Compute information for each vertex.
-    vertex_info_.resize(vertex_num);
-    // Compute information for each fixed vertex.
-    for (int i = 0; i < fixed_num; ++i) {
-      int vertex_id = fixed_(i);
-      VertexInfo info(VertexType::Fixed, i);
-      vertex_info_[vertex_id] = info;
-    }
-    // Compute information for each free vertex.
-    for (int i = 0; i < free_num; ++i) {
-      int vertex_id = free_(i);
-      VertexInfo info(VertexType::Free, i);
-      vertex_info_[vertex_id] = info;
-    }
-    // Sanity check for all the vertices.
-    for (int i = 0; i < vertex_num; ++i) {
-      VertexInfo info = vertex_info_[i];
-      switch (info.type) {
-        case Fixed:
-          if (fixed_(info.pos) != i) {
-            std::cout << "Fail to test vertex info: wrong fixed position."
-                      << std::endl;
-            return false;
-          }
-          break;
-        case Free:
-          if (free_(info.pos) != i) {
-            std::cout << "Fail to test vertex info: wrong free position."
-                      << std::endl;
-            return false;
-          }
-          break;
-        default:
-          std::cout << "Unknown vertex type." << std::endl;
-          return false;
-      }
-    }
-    return true;
-  }
-  return false;
-}
-
 void ArapSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
@@ -126,24 +53,6 @@ void ArapSolver::Precompute() {
     // Failed to decompose lb_operator_.
     std::cout << "Fail to do Cholesky factorization." << std::endl;
     return;
-  }
-}
-
-void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
-  // The optimization goes alternatively between solving vertices and
-  // rotations.
-  // Step 0: replace some vertices in vertices_updated_ with fixed_vertices.
-  // Step 1: given vertices_ and vertices_updated_, solve the rotations for all
-  // the vertices by polar_svd.
-  // Step 2: update the rhs in equation (9) with updated rotations.
-  // Step 3: repeat Step 1 and Step 2 for max_iteration times.
-
-  // Step 0: replace vertices with fixed_vertices.
-  SolvePreprocess(fixed_vertices);
-  int iter = 0;
-  while (iter < max_iteration_) {
-    SolveOneIteration(fixed_vertices);
-    ++iter;
   }
 }
 

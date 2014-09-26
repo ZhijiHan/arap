@@ -147,7 +147,7 @@ int main(int argc, char *argv[]) {
   bc = ComputeFixedVertices(atoi(argv[3]));
 
   // Add our own pre computation implementation here.
-  arap_solver.RegisterData(V, F, b, 100);
+  arap_solver.RegisterData(V, F, b, 500);
   arap_solver.Precompute();
   // Prepare to solve the problem.
   arap_solver.SolvePreprocess(bc);
