@@ -6,4 +6,4 @@ DMAT_FILE_NAME=/home/taodu/research/arap/model/decimated-knight-selection.dmat
 cd build
 cmake -DCMAKE_BUILD_TYPE=Release ../
 make
-./demo_bin $OFF_FILE_NAME $DMAT_FILE_NAME 35
+./demo_bin $OFF_FILE_NAME $DMAT_FILE_NAME 120
