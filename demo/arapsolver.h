@@ -44,7 +44,16 @@ class ArapSolver {
 
   // Solves ARAP problem. |fixed_vertices| is a # of fixed vertices by 3 matrix.
   // Each row in |fixed_vertices| represents the coordinates of a fixed vertex.
+  // The function is equivalent to:
+  // SolvePreprocess(fixed_vertices);
+  // while (iter < max_iteration_)
+  //   SolveOneIteration();
   void Solve(const Eigen::MatrixXd& fixed_vertices);
+
+  // This function gives a chance to do preprocessing in Solve().
+  void SolvePreprocess(const Eigen::MatrixXd& fixed_vertices);
+  // Solves for one iteration. This function helps us analyse the algorithm.
+  void SolveOneIteration(const Eigen::MatrixXd& fixed_vertices);
 
   // Gets vertices_updated_.
   const Eigen::MatrixXd& GetVertexSolution() const;
@@ -54,12 +63,15 @@ class ArapSolver {
   // Gets indices of the fixed vertices.
   const Eigen::VectorXi& GetFixedIndices() const { return fixed_; }
 
- private:
-  // Computes the cotangent angle in one face indicated by |face_id|.
-  Eigen::Vector3d ComputeCotangent(int face_id) const;
+  // Gets max iteration time.
+  int GetMaxIteration() const { return max_iteration_; }
 
   // Given all the current data members, compute the energy.
   double ComputeEnergy() const;
+
+ private:
+  // Computes the cotangent angle in one face indicated by |face_id|.
+  Eigen::Vector3d ComputeCotangent(int face_id) const;
 
   // vertices_ is a # of vertices by 3 matrix. Each row in vertices_ represents
   // a vertex's position.

@@ -20,14 +20,13 @@
 #include <igl/svd3x3/arap.h>
 #include <igl/viewer/Viewer.h>
 
-// Change this to 0 if we don't want to use IGL's implementation.
-#define USE_IGL_AS_BENCHMARK 1
-
 // Vertex matrix. V is the original vertices from .off file, and U is the
 // vertices updated in each frame.
 Eigen::MatrixXd V, U;
 // Face matrix. F is read from .off file.
 Eigen::MatrixXi F;
+// Fixed vertices.
+Eigen::MatrixXd bc;
 // Color matrix used to display selected points from S and b below.
 Eigen::MatrixXd C;
 // S is a column vector representing vertices with predefined coordinates in
@@ -39,9 +38,6 @@ Eigen::VectorXi S, b;
 Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
-#if USE_IGL_AS_BENCHMARK
-igl::ARAPData arap_data;
-#endif
 // Our own implementation of ARAP.
 arap::demo::ArapSolver arap_solver;
 
@@ -55,59 +51,51 @@ static const Eigen::RowVector3d kGold(255.0 / 255.0,
 // Error threshold.
 static const double kErrorPerVertexCoord = 1e-8;
 
-bool pre_draw(igl::Viewer& viewer) {
-  if (!viewer.core.is_animating)
-    return false;
+// Given |frame_number|, compute the fixed vertices and return.
+Eigen::MatrixXd ComputeFixedVertices(int frame_number) {
+  anim_t = anim_t_dir * frame_number;
   Eigen::MatrixXd bc(b.size(), V.cols());
   for(int i = 0; i < b.size(); ++i) {
     bc.row(i) = V.row(b(i));
-    switch(S(b(i))) {
+    switch (S(b(i))) {
       case 0: {
         const double r = mid(0) * 0.25;
-        bc(i,0) += r * sin(0.5 * anim_t * 2. * igl::PI);
-        bc(i,1) -= r + r * cos(igl::PI + 0.5 * anim_t * 2. * igl::PI);
+        bc(i, 0) += r * sin(0.5 * anim_t * 2. * igl::PI);
+        bc(i, 1) -= r + r * cos(igl::PI + 0.5 * anim_t * 2. * igl::PI);
         break;
       }
       case 1: {
         const double r = mid(1) * 0.15;
-        bc(i,1) += r + r * cos(igl::PI + 0.15 * anim_t * 2. * igl::PI);
-        bc(i,2) -= r * sin(0.15 * anim_t * 2. * igl::PI);
+        bc(i, 1) += r + r * cos(igl::PI + 0.15 * anim_t * 2. * igl::PI);
+        bc(i, 2) -= r * sin(0.15 * anim_t * 2. * igl::PI);
         break;
       }
       case 2: {
         const double r = mid(1) * 0.15;
-        bc(i,2) += r + r * cos(igl::PI + 0.35 * anim_t * 2. * igl::PI);
-        bc(i,0) += r * sin(0.35 * anim_t * 2. * igl::PI);
+        bc(i, 2) += r + r * cos(igl::PI + 0.35 * anim_t * 2. * igl::PI);
+        bc(i, 0) += r * sin(0.35 * anim_t * 2. * igl::PI);
         break;
       }
       default:
         break;
     }
   }
-#if USE_IGL_AS_BENCHMARK
-  // Solve the arap problem.
-  igl::arap_solve(bc, arap_data, U);
-  // The above U is the ground truth solution.
-#endif
-  arap_solver.Solve(bc);
+  return bc;
+}
+
+bool pre_draw(igl::Viewer& viewer) {
+  static int iteration = 0;
+  if (!viewer.core.is_animating
+    || iteration >= arap_solver.GetMaxIteration())
+    return false;
+  arap_solver.SolveOneIteration(bc);
+  double energy = arap_solver.ComputeEnergy();
+  std::cout << "Iteration: " << iteration << " Energy: " << energy << std::endl;
   Eigen::MatrixXd solution = arap_solver.GetVertexSolution();
-#if USE_IGL_AS_BENCHMARK
-  // Compare the ground truth and our solution.
-  double abs_error = (U - solution).norm();
-  double relative_error = abs_error / U.norm();
-  int vertex_num = V.rows();
-  // The norm method in Eigen returns Frobenius norm for matrices.
-  if (abs_error > sqrt(3 * vertex_num * kErrorPerVertexCoord)) {
-    std::cout << "Fail to pass the test:" << std::endl
-              << "Absolute error = " << abs_error << " "
-              << "Relative error = " << relative_error << std::endl;
-  }
-#endif
   viewer.data.set_vertices(solution);
   viewer.data.set_points(bc, C);
   viewer.data.compute_normals();
-  // Update anim_t for next frame.
-  anim_t += anim_t_dir;
+  ++iteration;
   return false;
 }
 
@@ -121,12 +109,12 @@ bool key_down(igl::Viewer& viewer, unsigned char key, int mods) {
   }
 }
 
-// Usage: ./demo_bin [.off file name] [.dmat file name].
+// Usage: ./demo_bin [.off file name] [.dmat file name] [frame number]
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
+  if (argc < 4) {
     std::cout << "Not enough input parameters." << std::endl
-              << "Usage: demo_bin [.off file name] [.dmat file name]."
-              << std::endl;
+              << "Usage: demo_bin [.off file name] [.dmat file name] "
+                 "[frame number]" << std::endl;
     return 0;
   }
   // Read V and F from file.
@@ -155,18 +143,14 @@ int main(int argc, char *argv[]) {
   // Centroid of the demo, used to compute the positions of selected vertices
   // during the animation.
   mid = 0.5 * (V.colwise().maxCoeff() + V.colwise().minCoeff());
+  // Compute the fixed vertices from the frame number.
+  bc = ComputeFixedVertices(atoi(argv[3]));
 
-#if USE_IGL_AS_BENCHMARK
-  // Set the max iteration during the optimization to be 100.
-  arap_data.max_iter = 100;
-  // Set the energy type to be the one used in Sorkine and Alexa's paper
-  // "As-Rigid-As-Possible Surface Modeling".
-  arap_data.energy = igl::ARAP_ENERGY_TYPE_SPOKES;
-  igl::arap_precomputation(V, F, V.cols(), b, arap_data);
-#endif
   // Add our own pre computation implementation here.
   arap_solver.RegisterData(V, F, b, 100);
   arap_solver.Precompute();
+  // Prepare to solve the problem.
+  arap_solver.SolvePreprocess(bc);
 
   // Set colors for selected vertices.
   C.resize(b.rows(), 3);
