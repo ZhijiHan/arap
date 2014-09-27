@@ -54,12 +54,12 @@ class ArapSolver {
   // Gets indices of the fixed vertices.
   const Eigen::VectorXi& GetFixedIndices() const { return fixed_; }
 
+  // Given all the current data members, compute the energy.
+  double ComputeEnergy() const;
+
  private:
   // Computes the cotangent angle in one face indicated by |face_id|.
   Eigen::Vector3d ComputeCotangent(int face_id) const;
-
-  // Given all the current data members, compute the energy.
-  double ComputeEnergy() const;
 
   // vertices_ is a # of vertices by 3 matrix. Each row in vertices_ represents
   // a vertex's position.
