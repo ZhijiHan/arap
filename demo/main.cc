@@ -106,6 +106,8 @@ bool pre_draw(igl::Viewer& viewer) {
   viewer.data.set_vertices(solution);
   viewer.data.set_points(bc, C);
   viewer.data.compute_normals();
+  // Display the energy.
+  std::cout << "Energy: " << arap_solver.ComputeEnergy() << std::endl;
   // Update anim_t for next frame.
   anim_t += anim_t_dir;
   return false;
