@@ -30,12 +30,9 @@ struct VertexInfo {
 
 class Solver {
  public:
-  Solver();
-
   // Registers data for Solver. Once vertices and faces are set then cannot
-  // be reset from outside. The only way to reset vertices is to call Solve,
-  // which will run algorithm based on the current state, and update vertices_.
-  bool RegisterData(const Eigen::MatrixXd& vertices, const Eigen::MatrixXi& faces,
+  // be reset from outside.
+  Solver(const Eigen::MatrixXd& vertices, const Eigen::MatrixXi& faces,
       const Eigen::VectorXi& fixed, int max_iteration);
 
   // Precomputes and caches necessary variables for the algorithm.
@@ -73,7 +70,7 @@ class Solver {
  protected:
   // vertices_ is a # of vertices by 3 matrix. Each row in vertices_ represents
   // a vertex's position.
-  Eigen::MatrixXd vertices_;
+  const Eigen::MatrixXd vertices_;
   // vertices_updated_ stores the solution of Solve function. It has the same
   // dimension of vertices_, and for indices in fixed_, vertices_updated_ has
   // the same value as the given parameter in Solve function.
@@ -83,10 +80,10 @@ class Solver {
   Eigen::MatrixXd fixed_vertices_;
   // faces_ is a # of faces by 3 matrix. Each row contains the indices of this
   // face's three vertices.
-  Eigen::MatrixXi faces_;
+  const Eigen::MatrixXi faces_;
   // fixed_ is a vector no longer than the # of vertices. It contains the
   // indices of the vertices that we want to fix during the deformation.
-  Eigen::VectorXi fixed_;
+  const Eigen::VectorXi fixed_;
   // free_ is the indices of free vertices. i.e., the union of fixed_ and
   // free_ is { 0, 1, 2, 3, ..., vertices_.row() - 1 }.
   Eigen::VectorXi free_;
@@ -114,7 +111,7 @@ class Solver {
   // SuiteSparse.
   Eigen::CholmodSupernodalLLT<Eigen::SparseMatrix<double>> solver_;
   // Max number of iterations used to solve ARAP.
-  int max_iteration_;
+  const int max_iteration_;
 };
 
 inline const Eigen::MatrixXd& Solver::GetVertexSolution() const {

@@ -8,7 +8,8 @@ namespace demo {
 
 class ArapSolver : public Solver {
  public:
-  ArapSolver();
+  ArapSolver(const Eigen::MatrixXd& vertices, const Eigen::MatrixXi& faces,
+      const Eigen::VectorXi& fixed, int max_iteration);
 
   // Pre computes cotangent weight and left matrix in ARAP.
   void Precompute();

@@ -8,7 +8,8 @@ namespace demo {
 
 class AdmmSolver : public Solver {
  public:
-  AdmmSolver(double rho);
+  AdmmSolver(const Eigen::MatrixXd& vertices, const Eigen::MatrixXi& faces,
+      const Eigen::VectorXi& fixed, int max_iteration, double rho);
 
   // Pre computes cotangent weight and left matrix in ADMM.
   void Precompute();

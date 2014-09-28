@@ -1,3 +1,4 @@
+#include "admmsolver.h"
 #include "arapsolver.h"
 
 // C++ standard library
@@ -20,6 +21,9 @@
 #include <igl/svd3x3/arap.h>
 #include <igl/viewer/Viewer.h>
 
+#define USE_ARAP_SOLVER 1
+#define USE_ADMM_SOLVER 0
+
 // Vertex matrix. V is the original vertices from .off file, and U is the
 // vertices updated in each frame.
 Eigen::MatrixXd V, U;
@@ -39,7 +43,7 @@ Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
 // Our own implementation of ARAP.
-arap::demo::ArapSolver arap_solver;
+arap::demo::Solver* solver;
 
 // Color used to draw precomputed vertices.
 static const Eigen::RowVector3d kPurple(80.0 / 255.0,
@@ -86,12 +90,12 @@ Eigen::MatrixXd ComputeFixedVertices(int frame_number) {
 bool pre_draw(igl::Viewer& viewer) {
   static int iteration = 0;
   if (!viewer.core.is_animating
-    || iteration >= arap_solver.GetMaxIteration())
+    || iteration >= solver->GetMaxIteration())
     return false;
-  arap_solver.SolveOneIteration();
-  double energy = arap_solver.ComputeEnergy();
+  solver->SolveOneIteration();
+  double energy = solver->ComputeEnergy();
   std::cout << "Iteration: " << iteration << " Energy: " << energy << std::endl;
-  Eigen::MatrixXd solution = arap_solver.GetVertexSolution();
+  Eigen::MatrixXd solution = solver->GetVertexSolution();
   viewer.data.set_vertices(solution);
   viewer.data.set_points(bc, C);
   viewer.data.compute_normals();
@@ -147,10 +151,16 @@ int main(int argc, char *argv[]) {
   bc = ComputeFixedVertices(atoi(argv[3]));
 
   // Add our own pre computation implementation here.
-  arap_solver.RegisterData(V, F, b, 500);
-  arap_solver.Precompute();
+#if USE_ARAP_SOLVER
+  std::cout << "Use ArapSolver." << std::endl;
+  solver = new arap::demo::ArapSolver(V, F, b, 500);
+#elif USE_ADMM_SOLVER
+  std::cout << "Use AdmmSolver." << std::endl;
+  solver = new arap::demo::AdmmSolver(V, F, b, 500, 0.1);
+#endif
+  solver->Precompute();
   // Prepare to solve the problem.
-  arap_solver.SolvePreprocess(bc);
+  solver->SolvePreprocess(bc);
 
   // Set colors for selected vertices.
   C.resize(b.rows(), 3);

@@ -13,8 +13,11 @@ namespace demo {
 
 const double kMatrixDiffThreshold = 1e-6;
 
-AdmmSolver::AdmmSolver(double rho)
-  : rho_(rho) {
+AdmmSolver::AdmmSolver(const Eigen::MatrixXd& vertices,
+    const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
+    int max_iteration, double rho)
+  : Solver(vertices, faces, fixed, max_iteration),
+  rho_(rho) {
 }
 
 void AdmmSolver::Precompute() {

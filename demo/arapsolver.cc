@@ -10,7 +10,10 @@
 namespace arap {
 namespace demo {
 
-ArapSolver::ArapSolver() {
+ArapSolver::ArapSolver(const Eigen::MatrixXd& vertices,
+    const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
+    int max_iteration)
+  : Solver(vertices, faces, fixed, max_iteration) {
 }
 
 void ArapSolver::Precompute() {
