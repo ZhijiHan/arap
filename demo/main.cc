@@ -88,7 +88,7 @@ bool pre_draw(igl::Viewer& viewer) {
   if (!viewer.core.is_animating
     || iteration >= arap_solver.GetMaxIteration())
     return false;
-  arap_solver.SolveOneIteration(bc);
+  arap_solver.SolveOneIteration();
   double energy = arap_solver.ComputeEnergy();
   std::cout << "Iteration: " << iteration << " Energy: " << energy << std::endl;
   Eigen::MatrixXd solution = arap_solver.GetVertexSolution();

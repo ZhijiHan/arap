@@ -92,7 +92,7 @@ void Solver::Solve(const Eigen::MatrixXd& fixed_vertices) {
   SolvePreprocess(fixed_vertices);
   int iter = 0;
   while (iter < max_iteration_) {
-    SolveOneIteration(fixed_vertices);
+    SolveOneIteration();
     ++iter;
   }
 }

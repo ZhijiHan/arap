@@ -1,7 +1,8 @@
-#include "arapsolver.h"
+#include "admmsolver.h"
 
 // C++ standard library
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include "igl/slice.h"
@@ -10,10 +11,13 @@
 namespace arap {
 namespace demo {
 
-ArapSolver::ArapSolver() {
+const double kMatrixDiffThreshold = 1e-6;
+
+AdmmSolver::AdmmSolver(double rho)
+  : rho_(rho) {
 }
 
-void ArapSolver::Precompute() {
+void AdmmSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
 
@@ -42,117 +46,78 @@ void ArapSolver::Precompute() {
     }
   }
 
-  // Compute lb_operator_. This matrix can be computed by extracting free_ rows
-  // and columns from -weight_.
-  igl::slice(weight_, free_, free_, lb_operator_);
-  lb_operator_ *= -1.0;
+  // Compute the left matrix M_.
+  // TODO
 
   // Cholesky factorization.
-  solver_.compute(lb_operator_);
+  solver_.compute(M_);
   if (solver_.info() != Eigen::Success) {
-    // Failed to decompose lb_operator_.
+    // Failed to decompose M_.
     std::cout << "Fail to do Cholesky factorization." << std::endl;
     return;
   }
 }
 
-void ArapSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
-  // Initialize fixed_vertices_.
+void AdmmSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
+  // Cache fixed_vertices.
   fixed_vertices_ = fixed_vertices;
-  // Initialized with vertices_. Note that this is different from the default
-  // setting in the ARAP demo, which uses the value from last from for
-  // initialization.
-  vertices_updated_ = vertices_;
+  // Check the dimension is correct.
   int fixed_num = fixed_.size();
-  for (int i = 0; i < fixed_num; ++i) {
-    vertices_updated_.row(fixed_(i)) = fixed_vertices_.row(i);
+  if (fixed_num != fixed_vertices_.rows()) {
+    std::cout << "Wrong dimension in fixed number." << std::endl;
+    return;
   }
+  // Initialize with vertices_.
+  vertices_updated_ = vertices_;
   // Initialize rotations_ with Identity matrices.
   rotations_.clear();
   int vertex_num = vertices_.rows();
   rotations_.resize(vertex_num, Eigen::Matrix3d::Identity());
+  // Initialize S_ with Identity matrices.
+  S_.clear();
+  S_.resize(vertex_num, Eigen::Matrix3d::Identity());
+  // Initialize T_ with zero matrices.
+  T_.clear();
+  T_.resize(vertex_num, Eigen::Matrix3d::Zero());
+  // Initialize u_ with zeros.
+  u_ = Eigen::MatrixXd::Zero(fixed_num, 3);
 }
 
-void ArapSolver::SolveOneIteration() {
+void AdmmSolver::SolveOneIteration() {
   int fixed_num = fixed_.size();
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
 
-  // A temporary vector to hold all the edge products for all the vertices.
-  // This is the S matrix in equation (5).
-  std::vector<Eigen::Matrix3d> edge_product;
-  // edge_map is used for looping over three edges in a triangle.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  // Step 1: solve rotations by polar_svd.
-  // Clear edge_product.
-  edge_product.clear();
-  edge_product.resize(vertex_num, Eigen::Matrix3d::Zero());
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges in the mesh.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
-      // Now we have got an edge from first to second.
-      Eigen::Vector3d edge = vertices_.row(first) - vertices_.row(second);
-      Eigen::Vector3d edge_update
-          = vertices_updated_.row(first) - vertices_updated_.row(second);
-      double weight = weight_.coeff(first, second);
-      edge_product[first] += weight * edge * edge_update.transpose();
-    }
-  }
-  for (int v = 0; v < vertex_num; ++v) {
+  // The iteration contains four steps:
+  // Step 1: linear solve.
+  // Step 2: SVD solve.
+  // Step 3: update u.
+  // Step 4: update T.
+
+  // Step 1: linear solve.
+  // TODO
+
+  // Step 2: SVD solve.
+  // Input: rotations_, S_, T_.
+  // Output: S_.
+  for (int i = 0; i < vertex_num; ++i) {
     Eigen::Matrix3d rotation;
-    igl::polar_svd3x3(edge_product[v], rotation);
-    rotations_[v] = rotation.transpose();
+    igl::polar_svd3x3((rotations_[i] + T_[i]).transpose(), rotation);
+    S_[i] = rotation.transpose();
   }
-  // Step 2: compute the rhs in equation (9).
-  int free_num = free_.size();
-  // The right hand side of equation (9). The x, y and z coordinates are
-  // computed separately.
-  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num, 3);
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges in the mesh.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
-      // If first is fixed, skip it.
-      if (vertex_info_[first].type == VertexType::Fixed)
-        continue;
-      int vertex_id = vertex_info_[first].pos;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d vec = weight / 2.0 *
-          (rotations_[first] + rotations_[second]) *
-          (vertices_.row(first) - vertices_.row(second)).transpose();
-      rhs.row(vertex_id) += vec.transpose();
-      if (vertex_info_[second].type == VertexType::Fixed) {
-        // If second is fixed, add another term in the right hand side.
-        rhs.row(vertex_id) += weight * vertices_updated_.row(second);
-      }
-    }
+
+  // Step 3: update u.
+  for (int j = 0; j < fixed_num; ++j) {
+    u_.rows(j) += vertices_updated_.rows(fixed_(j)) - fixed_vertices_.row(j);
   }
-  // Solve for free_.
-  Eigen::VectorXd solution;
-  for (int i = 0; i < 3; ++i) {
-    solution = solver_.solve(rhs.col(i));
-    if (solver_.info() != Eigen::Success) {
-      std::cout << "Fail to solve the sparse linear system." << std::endl;
-      return;
-    }
-    // Sanity check the dimension of solution.
-    if (solution.size() != free_num) {
-      std::cout << "Fail to write back solution: dimension mismatch."
-                << std::endl;
-      return;
-    }
-    // Write back to vertices_updated_.
-    for (int j = 0; j < free_num; ++j) {
-      int vertex_id = free_(j);
-      vertices_updated_(vertex_id, i) = solution(j);
-    }
+
+  // Step 4: update T.
+  for (int i = 0; i < vertex_num; ++i) {
+    T_[i] += rotations_[i] - S_[i];
   }
 }
 
-Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {
+Eigen::Vector3d AdmmSolver::ComputeCotangent(int face_id) const {
   Eigen::Vector3d cotangent(0.0, 0.0, 0.0);
   // The triangle is defined as follows:
   //            A
@@ -183,8 +148,25 @@ Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {
   return cotangent;
 }
 
-double ArapSolver::ComputeEnergy() const {
+double AdmmSolver::ComputeEnergy() const {
   // Compute the energy.
+  // In order to do early return, let's first test all the S_ matrices to see
+  // whether they belong to SO(3).
+  double infty = std:numeric_limits<double>::infinity();
+  int vertex_num = vertices_.rows();
+  Eigen::Matrix3d iden = Eigen::Matrix3d::Identity();
+  for (int i = 0; i < vertex_num; ++i) {
+    Eigen::Matrix3d si = S_[i];
+    double det = si.determinant();
+    if ((si * si.transpose() - iden).squaredNorm() > kMatrixDiffThreshold
+      || abs(det - 1) > kMatrixDiffThreshold) {
+      std::cout << "Si does not belong to SO(3) -- This should never happen.\n"
+        << "i = " << i << " det = " << det << std::endl
+        << "Si * Si' = \n" << si * si.transpose() << std::endl;
+      return infty;
+    }
+  }
+  // Now it passes the indicator function, the energy should be finite.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   double energy = 0.0;
   int face_num = faces_.rows();
@@ -203,6 +185,23 @@ double ArapSolver::ComputeEnergy() const {
       energy += edge_energy;
     }
   }
+  // Add augmented term.
+  double half_rho = rho / 2;
+  double rotation_aug_energy = 0.0;
+  for (int i = 0; i < vertex_num; ++i) {
+    rotation_aug_energy += (rotations_[i] - S_[i] + T_[i]).squaredNorm();
+  }
+  rotation_aug_energy *= half_rho;
+  energy += rotation_aug_energy;
+
+  int fixed_num = fixed_.size();
+  double vertex_aug_energy = 0.0;
+  for (int i = 0; i < fixed_num; ++i) {
+    vertex_aug_energy += (vertices_updated_.row(fixed_(i))
+      - fixed_vertices_.rows(i) + u_.rows(i)).squaredNorm();
+  }
+  vertex_aug_energy *= half_rho;
+  energy += vertex_aug_energy;
   return energy;
 }
 

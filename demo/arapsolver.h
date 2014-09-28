@@ -17,7 +17,7 @@ class ArapSolver : public Solver {
   // solving cycle.
   void SolvePreprocess(const Eigen::MatrixXd& fixed_vertices);
   // Solves for one iteration. This function helps us analyse the algorithm.
-  void SolveOneIteration(const Eigen::MatrixXd& fixed_vertices);
+  void SolveOneIteration();
 
   // Given all the current data members, compute the energy.
   double ComputeEnergy() const;
