@@ -37,7 +37,7 @@ class AdmmSolver : public Solver {
   // # of fixed vertices, and the column is 3.
   Eigen::MatrixXd u_;
   // M is the left matrix in the linear solve.
-  Eigen::MatrixXD M_;
+  Eigen::SparseMatrix<double> M_;
 };
 
 }  // namespace demo

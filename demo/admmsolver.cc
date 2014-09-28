@@ -20,6 +20,7 @@ AdmmSolver::AdmmSolver(double rho)
 void AdmmSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
+  int fixed_num = fixed_.size();
 
   // Compute weight_.
   weight_.resize(vertex_num, vertex_num);
@@ -47,8 +48,62 @@ void AdmmSolver::Precompute() {
   }
 
   // Compute the left matrix M_.
-  // TODO
-
+  // The dimension of M_ should be # of constraints by # of unknowns. i.e.,
+  // (4 * vertex_num) * (4 * vertex_num).
+  M_.resize(4 * vertex_num, 4 * vertex_num);
+  // The arrangement is as follows:
+  // variables(columns in M_):
+  // col(i): vertex position for p_i.
+  // col(vertex_num + 3 * i : vertex_num + 3 * i + 2): the first to third
+  // columns in R_i.
+  // constraints(rows in M_):
+  // row(0 : vertex_num - 1): constraints for each vertex.
+  // row(vertex_num : 4 * vertex_num - 1): constraints for rotations.
+  // Note that the problem can be decomposed to solve in three dimensions.
+  // Loop over all the edges.
+  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
+  double half_rho = rho_ / 2;
+  for (int j = 0; j < fixed_num; ++j) {
+    int pos = fixed_(j);
+    M_.coeffRef(pos, pos) += half_rho;
+  }
+  for (int i = vertex_num; i < 4 * vertex_num; ++i) {
+    M_.coeffRef(i, i) += 1;
+  }
+  for (int f = 0; f < face_num; ++f) {
+    // Loop over all the edges.
+    for (int e = 0; e < 3; ++e) {
+      int first = faces_(f, edge_map[e][0]);
+      int second = faces_(f, edge_map[e][1]);
+      // Each edge is visited twice: i->j and j->i.
+      // We treat first as 'i' in our constraints.
+      // The i-th constraints are in the i-th and vertex_num + 3 * i :
+      // vertex_num + 3 * i + 2 row in M_.
+      double weight = weight_.coeff(first, second);
+      M_.coeffRef(first, first) += weight;
+      M_.coeffRef(first, second) -= weight;
+      M_.coeffRef(second, first) -= weight;
+      M_.coeffRef(second, second) += weight;
+      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
+      for (int i = 0; i < 3; ++i) {
+        M_.coeffRef(first, vertex_num + 3 * first + i) -= weight * v(i);
+        M_.coeffRef(second, vertex_num + 3 * first + i) += weight * v(i);
+      }
+      // Rotation constraints.
+      Eigen::Matrix3d m = v * v.transpose() * weight * 2 / rho_;
+      for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+          M_.coeffRef(vertex_num + 3 * first + i, vertex_num + 3 * first + j)
+            += m(i, j);
+        }
+      }
+      for (int i = 0; i < 3; ++i) {
+        double val = weight * 2 * v(i) / rho_;
+        M_.coeffRef(vertex_num + 3 + first + i, first) -= val;
+        M_.coeffRef(vertex_num + 3 + first + i, second) += val;
+      }
+    }
+  }
   // Cholesky factorization.
   solver_.compute(M_);
   if (solver_.info() != Eigen::Success) {
@@ -95,20 +150,57 @@ void AdmmSolver::SolveOneIteration() {
   // Step 4: update T.
 
   // Step 1: linear solve.
-  // TODO
+  // Note that the problem can be decomposed in three dimensions.
+  // The number of constraints are 4 * vertex_num.
+  // The first vertex_num constraints are for vertex, and the remaining
+  // 3 * vertex_num constraints are for matrices.
+  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(4 * vertex_num, 3);
+  // Build rhs.
+  // For vertex constraints. Since the rhs value for free vertices are 0, we
+  // only consider fixed vertices.
+  double half_rho = rho_ / 2;
+  for (int j = 0; j < fixed_num; ++j) {
+    rhs.row(fixed_(j)) = half_rho * (fixed_vertices_.row(j) - u_.row(j));
+  }
+  // For rotation matrix constraints.
+  for (int v = 0; v < vertex_num; ++v) {
+    rhs.block<3, 3>(vertex_num + 3 * v, 0) = (S_[v] - T_[v]).transpose();
+  }
+  // Solve.
+  Eigen::VectorXd solution;
+  for (int i = 0; i < 3; ++i) {
+    solution = solver_.solve(rhs.col(i));
+    if (solver_.info() != Eigen::Success) {
+      std::cout << "Fail to solve the sparse linear system." << std::endl;
+      return;
+    }
+    // Sanity check the dimension of the solution.
+    if (solution.size() != 4 * vertex_num) {
+      std::cout << "Fail to write back solution: dimension mismatch."
+        << std::endl;
+      return;
+    }
+    // Write back the solutions.
+    vertices_updated_.col(i) = solution.segment(0, vertex_num);
+    for (int v = 0; v < vertex_num; ++v) {
+      rotations_[v].row(i)
+        = solution.block<3, 1>(vertex_num + 3 * v, i).transpose();
+    }
+  }
 
   // Step 2: SVD solve.
   // Input: rotations_, S_, T_.
   // Output: S_.
   for (int i = 0; i < vertex_num; ++i) {
     Eigen::Matrix3d rotation;
-    igl::polar_svd3x3((rotations_[i] + T_[i]).transpose(), rotation);
+    Eigen::Matrix3d res = (rotations_[i] + T_[i]).transpose();
+    igl::polar_svd3x3(res, rotation);
     S_[i] = rotation.transpose();
   }
 
   // Step 3: update u.
   for (int j = 0; j < fixed_num; ++j) {
-    u_.rows(j) += vertices_updated_.rows(fixed_(j)) - fixed_vertices_.row(j);
+    u_.row(j) += vertices_updated_.row(fixed_(j)) - fixed_vertices_.row(j);
   }
 
   // Step 4: update T.
@@ -152,7 +244,7 @@ double AdmmSolver::ComputeEnergy() const {
   // Compute the energy.
   // In order to do early return, let's first test all the S_ matrices to see
   // whether they belong to SO(3).
-  double infty = std:numeric_limits<double>::infinity();
+  double infty = std::numeric_limits<double>::infinity();
   int vertex_num = vertices_.rows();
   Eigen::Matrix3d iden = Eigen::Matrix3d::Identity();
   for (int i = 0; i < vertex_num; ++i) {
@@ -186,7 +278,7 @@ double AdmmSolver::ComputeEnergy() const {
     }
   }
   // Add augmented term.
-  double half_rho = rho / 2;
+  double half_rho = rho_ / 2;
   double rotation_aug_energy = 0.0;
   for (int i = 0; i < vertex_num; ++i) {
     rotation_aug_energy += (rotations_[i] - S_[i] + T_[i]).squaredNorm();
@@ -198,7 +290,7 @@ double AdmmSolver::ComputeEnergy() const {
   double vertex_aug_energy = 0.0;
   for (int i = 0; i < fixed_num; ++i) {
     vertex_aug_energy += (vertices_updated_.row(fixed_(i))
-      - fixed_vertices_.rows(i) + u_.rows(i)).squaredNorm();
+      - fixed_vertices_.row(i) + u_.row(i)).squaredNorm();
   }
   vertex_aug_energy *= half_rho;
   energy += vertex_aug_energy;

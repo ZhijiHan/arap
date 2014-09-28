@@ -5,6 +5,7 @@ include("../CMakeLists.shared")
 
 set(SOURCES
 ${PROJECT_SOURCE_DIR}/main.cc
+${PROJECT_SOURCE_DIR}/admmsolver.cc
 ${PROJECT_SOURCE_DIR}/arapsolver.cc
 ${PROJECT_SOURCE_DIR}/solver.cc
 )
