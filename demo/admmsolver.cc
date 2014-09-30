@@ -65,13 +65,12 @@ void AdmmSolver::Precompute() {
   // Note that the problem can be decomposed to solve in three dimensions.
   // Loop over all the edges.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  double half_rho = rho_ / 2;
   for (int j = 0; j < fixed_num; ++j) {
     int pos = fixed_(j);
-    M_.coeffRef(pos, pos) += half_rho;
+    M_.coeffRef(pos, pos) += rho_;
   }
   for (int i = vertex_num; i < 4 * vertex_num; ++i) {
-    M_.coeffRef(i, i) += 1;
+    M_.coeffRef(i, i) += rho_;
   }
   for (int f = 0; f < face_num; ++f) {
     // Loop over all the edges.
@@ -83,17 +82,17 @@ void AdmmSolver::Precompute() {
       // The i-th constraints are in the i-th and vertex_num + 3 * i :
       // vertex_num + 3 * i + 2 row in M_.
       double weight = weight_.coeff(first, second);
-      M_.coeffRef(first, first) += weight;
-      M_.coeffRef(first, second) -= weight;
-      M_.coeffRef(second, first) -= weight;
-      M_.coeffRef(second, second) += weight;
+      M_.coeffRef(first, first) +=  2 * weight;
+      M_.coeffRef(first, second) -= 2 * weight;
+      M_.coeffRef(second, first) -= 2 * weight;
+      M_.coeffRef(second, second) += 2 * weight;
       Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
       for (int i = 0; i < 3; ++i) {
-        M_.coeffRef(first, vertex_num + 3 * first + i) -= weight * v(i);
-        M_.coeffRef(second, vertex_num + 3 * first + i) += weight * v(i);
+        M_.coeffRef(first, vertex_num + 3 * first + i) -= 2 * weight * v(i);
+        M_.coeffRef(second, vertex_num + 3 * first + i) += 2 * weight * v(i);
       }
       // Rotation constraints.
-      Eigen::Matrix3d m = v * v.transpose() * weight * 2 / rho_;
+      Eigen::Matrix3d m = v * v.transpose() * weight * 2;
       for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
           M_.coeffRef(vertex_num + 3 * first + i, vertex_num + 3 * first + j)
@@ -101,12 +100,34 @@ void AdmmSolver::Precompute() {
         }
       }
       for (int i = 0; i < 3; ++i) {
-        double val = weight * 2 * v(i) / rho_;
-        M_.coeffRef(vertex_num + 3 + first + i, first) -= val;
-        M_.coeffRef(vertex_num + 3 + first + i, second) += val;
+        double val = weight * 2 * v(i);
+        M_.coeffRef(vertex_num + 3 * first + i, first) -= val;
+        M_.coeffRef(vertex_num + 3 * first + i, second) += val;
       }
     }
   }
+  M_.makeCompressed();
+  // Play with simple examples.
+  Eigen::SparseMatrix<double> M;
+  M.resize(3, 3);
+  M.coeffRef(0, 0) = 2.2;
+  M.coeffRef(1, 1) = 1;
+  M.coeffRef(2, 2) = 1.3;
+  //M.coeffRef(0, 1) = 1.7;
+  M = M * M.transpose();
+  M.makeCompressed();
+  std::cout << "Random PSD matrix: \n" << M << std::endl;
+  Eigen::VectorXd v = Eigen::VectorXd::Random(3, 1);
+  std::cout << "x = \n" << v << std::endl;
+  Eigen::VectorXd b = M * v;
+  solver_.compute(M);
+  std::cout << "solution = \n" << v << std::endl;
+
+
+  // What is the eigenvalue for M_?
+  Eigen::MatrixXd dM_ = Eigen::MatrixXd(M_);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(dM_);
+  std::cout << "Eigs: \n" << es.eigenvalues() << std::endl;
   // Cholesky factorization.
   solver_.compute(M_);
   if (solver_.info() != Eigen::Success) {
@@ -161,13 +182,13 @@ void AdmmSolver::SolveOneIteration() {
   // Build rhs.
   // For vertex constraints. Since the rhs value for free vertices are 0, we
   // only consider fixed vertices.
-  double half_rho = rho_ / 2;
   for (int j = 0; j < fixed_num; ++j) {
-    rhs.row(fixed_(j)) = half_rho * (fixed_vertices_.row(j) - u_.row(j));
+    rhs.row(fixed_(j)) = rho_ * (fixed_vertices_.row(j) - u_.row(j));
   }
   // For rotation matrix constraints.
   for (int v = 0; v < vertex_num; ++v) {
-    rhs.block<3, 3>(vertex_num + 3 * v, 0) = (S_[v] - T_[v]).transpose();
+    rhs.block<3, 3>(vertex_num + 3 * v, 0)
+      = rho_ * (S_[v] - T_[v]).transpose();
   }
   // Solve.
   Eigen::VectorXd solution;
