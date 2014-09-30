@@ -107,22 +107,6 @@ void AdmmSolver::Precompute() {
     }
   }
   M_.makeCompressed();
-  // Play with simple examples.
-  Eigen::SparseMatrix<double> M;
-  M.resize(3, 3);
-  M.coeffRef(0, 0) = 2.2;
-  M.coeffRef(1, 1) = 1;
-  M.coeffRef(2, 2) = 1.3;
-  //M.coeffRef(0, 1) = 1.7;
-  M = M * M.transpose();
-  M.makeCompressed();
-  std::cout << "Random PSD matrix: \n" << M << std::endl;
-  Eigen::VectorXd v = Eigen::VectorXd::Random(3, 1);
-  std::cout << "x = \n" << v << std::endl;
-  Eigen::VectorXd b = M * v;
-  solver_.compute(M);
-  std::cout << "solution = \n" << v << std::endl;
-
   // Cholesky factorization.
   solver_.compute(M_);
   if (solver_.info() != Eigen::Success) {
