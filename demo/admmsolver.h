@@ -1,6 +1,8 @@
 #ifndef _ARAP_DEMO_ADMMSOLVER_H_
 #define _ARAP_DEMO_ADMMSOLVER_H_
 
+#include "Eigen/CholmodSupport"
+
 #include "solver.h"
 
 namespace arap {
@@ -39,6 +41,8 @@ class AdmmSolver : public Solver {
   Eigen::MatrixXd u_;
   // M is the left matrix in the linear solve.
   Eigen::SparseMatrix<double> M_;
+  // Sparse linear solver. Use Cholmod from SuiteSparse.
+  Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
 };
 
 }  // namespace demo

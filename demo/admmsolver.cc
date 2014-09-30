@@ -183,6 +183,11 @@ void AdmmSolver::SolveOneIteration() {
         << std::endl;
       return;
     }
+    // Sanity check the value of the solution.
+    if ((M_ * solution - rhs.col(i)).squaredNorm() > kMatrixDiffThreshold) {
+      std::cout << "Sparse linear solver is wrong!" << std::endl;
+      return;
+    }
     // Write back the solutions.
     vertices_updated_.col(i) = solution.segment(0, vertex_num);
     for (int v = 0; v < vertex_num; ++v) {

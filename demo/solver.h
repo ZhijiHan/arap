@@ -1,10 +1,6 @@
 #ifndef _ARAP_DEMO_SOLVER_H_
 #define _ARAP_DEMO_SOLVER_H_
 
-#include "Eigen/IterativeLinearSolvers"
-#include "Eigen/CholmodSupport"
-#include "Eigen/SparseLU"
-#include "Eigen/SparseQR"
 #include "Eigen/Dense"
 #include "Eigen/Sparse"
 
@@ -110,9 +106,6 @@ class Solver {
   Eigen::SparseMatrix<double> weight_;
   // A vector to store rotations for all the vertices.
   std::vector<Eigen::Matrix3d> rotations_;
-  // Sparse linear solver for equation (9) in the paper. Use Cholmod from
-  // SuiteSparse.
-  Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
   // Max number of iterations used to solve ARAP.
   const int max_iteration_;
 };

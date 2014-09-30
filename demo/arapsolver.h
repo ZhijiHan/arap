@@ -1,6 +1,8 @@
 #ifndef _ARAP_DEMO_ARAPSOLVER_H_
 #define _ARAP_DEMO_ARAPSOLVER_H_
 
+#include "Eigen/CholmodSupport"
+
 #include "solver.h"
 
 namespace arap {
@@ -30,6 +32,8 @@ class ArapSolver : public Solver {
   // The discrete Laplace-Beltrami operator in the left hand side of the linear
   // system defined in equation (9) in the paper.
   Eigen::SparseMatrix<double> lb_operator_;
+  // Sparse linear solver. Use Cholmod from SuiteSparse.
+  Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
 };
 
 }  // namespace demo
