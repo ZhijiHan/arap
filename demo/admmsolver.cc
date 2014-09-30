@@ -186,8 +186,7 @@ void AdmmSolver::SolveOneIteration() {
     // Write back the solutions.
     vertices_updated_.col(i) = solution.segment(0, vertex_num);
     for (int v = 0; v < vertex_num; ++v) {
-      rotations_[v].row(i)
-        = solution.block<3, 1>(vertex_num + 3 * v, i).transpose();
+      rotations_[v].row(i) = solution.segment(vertex_num + 3 * v, 3);
     }
   }
 
