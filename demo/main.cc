@@ -21,8 +21,8 @@
 #include <igl/svd3x3/arap.h>
 #include <igl/viewer/Viewer.h>
 
-#define USE_ARAP_SOLVER 1
-#define USE_ADMM_SOLVER 0
+#define USE_ARAP_SOLVER 0
+#define USE_ADMM_SOLVER 1
 
 // Vertex matrix. V is the original vertices from .off file, and U is the
 // vertices updated in each frame.
