@@ -123,11 +123,6 @@ void AdmmSolver::Precompute() {
   solver_.compute(M);
   std::cout << "solution = \n" << v << std::endl;
 
-
-  // What is the eigenvalue for M_?
-  Eigen::MatrixXd dM_ = Eigen::MatrixXd(M_);
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(dM_);
-  std::cout << "Eigs: \n" << es.eigenvalues() << std::endl;
   // Cholesky factorization.
   solver_.compute(M_);
   if (solver_.info() != Eigen::Success) {
