@@ -288,7 +288,7 @@ double AdmmSolver::ComputeEnergy() const {
   double half_rho = rho_ / 2;
   double rotation_aug_energy = 0.0;
   for (int i = 0; i < vertex_num; ++i) {
-    rotation_aug_energy += (rotations_[i] - S_[i] + T_[i]).squaredNorm();
+    rotation_aug_energy += (rotations_[i] - S_[i]).squaredNorm();
   }
   rotation_aug_energy *= half_rho;
   energy += rotation_aug_energy;
@@ -297,7 +297,7 @@ double AdmmSolver::ComputeEnergy() const {
   double vertex_aug_energy = 0.0;
   for (int i = 0; i < fixed_num; ++i) {
     vertex_aug_energy += (vertices_updated_.row(fixed_(i))
-      - fixed_vertices_.row(i) + u_.row(i)).squaredNorm();
+      - fixed_vertices_.row(i)).squaredNorm();
   }
   vertex_aug_energy *= half_rho;
   energy += vertex_aug_energy;

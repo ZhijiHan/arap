@@ -156,7 +156,10 @@ int main(int argc, char *argv[]) {
   solver = new arap::demo::ArapSolver(V, F, b, 500);
 #elif USE_ADMM_SOLVER
   std::cout << "Use AdmmSolver." << std::endl;
-  solver = new arap::demo::AdmmSolver(V, F, b, 500, 0.1);
+  double rho;
+  std::cout << "Input rho: " << std::endl;
+  std::cin >> rho;
+  solver = new arap::demo::AdmmSolver(V, F, b, 500, rho);
 #endif
   solver->Precompute();
   // Prepare to solve the problem.
