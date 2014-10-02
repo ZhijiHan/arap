@@ -8,10 +8,13 @@
 #include "igl/slice.h"
 #include "igl/svd3x3/polar_svd3x3.h"
 
+//#define USE_TEST_FUNCTIONS
+
 namespace arap {
 namespace demo {
 
 const double kMatrixDiffThreshold = 1e-6;
+const double kEnergyTolerance = 0.02;
 
 AdmmSolver::AdmmSolver(const Eigen::MatrixXd& vertices,
     const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
@@ -53,7 +56,6 @@ void AdmmSolver::Precompute() {
   // Compute the left matrix M_.
   // The dimension of M_ should be # of constraints by # of unknowns. i.e.,
   // (4 * vertex_num) * (4 * vertex_num).
-  M_.resize(4 * vertex_num, 4 * vertex_num);
   // The arrangement is as follows:
   // variables(columns in M_):
   // col(i): vertex position for p_i.
@@ -63,6 +65,12 @@ void AdmmSolver::Precompute() {
   // row(0 : vertex_num - 1): constraints for each vertex.
   // row(vertex_num : 4 * vertex_num - 1): constraints for rotations.
   // Note that the problem can be decomposed to solve in three dimensions.
+
+  // Here we have two methods to compute M_. The first one is to compute the
+  // gradient directly. Unfortunately this is harder to program and check. So
+  // we comment it out, and keep it here just for reference.
+  /*** Start of the first method: compute the gradient directly.
+  M_.resize(4 * vertex_num, 4 * vertex_num);
   // Loop over all the edges.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   for (int j = 0; j < fixed_num; ++j) {
@@ -106,13 +114,80 @@ void AdmmSolver::Precompute() {
       }
     }
   }
+  // End of computing the gradient directly. ***/
+
+  // The second method looks a lot nicer: First let's consider taking the
+  // derivatives of f(x) = w||Ax-b||^2:
+  // f(x) = w(x'A'-b')(Ax-b) = w(x'A'Ax-2b'Ax+b'b), so
+  // \nabla f(x) = w(2A'Ax-2b'A) = (2wA'A)x-2wb'A
+  // So we can sum up all these terms to get the normal equation!
+  // (\sum 2wA'A)x = \sum 2wA'b
+
+  // Start of the second method.
+  M_.resize(4 * vertex_num, 4 * vertex_num);
+  // Loop over all the edges.
+  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
+  for (int f = 0; f < face_num; ++f) {
+    // Loop over all the edges.
+    for (int e = 0; e < 3; ++e) {
+      int first = faces_(f, edge_map[e][0]);
+      int second = faces_(f, edge_map[e][1]);
+      // What is p_1 - p_2?
+      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
+      // What is the weight?
+      double weight = weight_.coeff(first, second);
+      // What is the dimension of A?
+      // A is a one line sparse row vector!
+      Eigen::SparseMatrix<double> A;
+      A.resize(1, 4 * vertex_num);
+      // Compute A.
+      A.coeffRef(0, first) = 1;
+      A.coeffRef(0, second) = -1;
+      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 0)) = -v(0);
+      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 1)) = -v(1);
+      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 2)) = -v(2);
+      // Add A to M_.
+      M_ = M_ + 2 * weight * A.transpose() * A;
+      // What is b? b is zero!
+    }
+  }
+  // Add the rotation constraints.
+  for (int v = 0; v < vertex_num; ++v) {
+    // What is the weight?
+    double w = rho_ / 2;
+    // What is A?
+    Eigen::SparseMatrix<double> A;
+    A.resize(3, 4 * vertex_num);
+    A.coeffRef(0, GetMatrixVariablePos(vertex_num, v, 0)) = 1;
+    A.coeffRef(1, GetMatrixVariablePos(vertex_num, v, 1)) = 1;
+    A.coeffRef(2, GetMatrixVariablePos(vertex_num, v, 2)) = 1;
+    // Add A to M_.
+    M_ = M_ + 2 * w * A.transpose() * A;
+  }
+  // Add constraints for fixed vertices.
+  for (int i = 0; i < fixed_num; ++i) {
+    // What is th position of this fixed vertex?
+    int pos = fixed_(i);
+    // What is the weight w?
+    double w = rho_ / 2;
+    // What is A?
+    Eigen::SparseMatrix<double> A;
+    A.resize(1, 4 * vertex_num);
+    A.coeffRef(0, pos) = 1;
+    // Add A to M_.
+    M_ = M_ + 2 * w * A.transpose() * A;
+  }
+  // End of the second method.
+  // We have compared M_ from both methods, and they're the same!
+
+  // Post-processing: compress M_, factorize it.
   M_.makeCompressed();
   // Cholesky factorization.
   solver_.compute(M_);
   if (solver_.info() != Eigen::Success) {
     // Failed to decompose M_.
     std::cout << "Fail to do Cholesky factorization." << std::endl;
-    return;
+    exit(EXIT_FAILURE);
   }
 }
 
@@ -123,7 +198,7 @@ void AdmmSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   int fixed_num = fixed_.size();
   if (fixed_num != fixed_vertices_.rows()) {
     std::cout << "Wrong dimension in fixed number." << std::endl;
-    return;
+    exit(EXIT_FAILURE);
   }
   // Initialize with vertices_.
   vertices_updated_ = vertices_;
@@ -157,6 +232,8 @@ void AdmmSolver::SolveOneIteration() {
   // The number of constraints are 4 * vertex_num.
   // The first vertex_num constraints are for vertex, and the remaining
   // 3 * vertex_num constraints are for matrices.
+  // Similarly, we implement two methods and cross check both of them.
+  /*** Method 1: Compute the derivatives directly.
   Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(4 * vertex_num, 3);
   // Build rhs.
   // For vertex constraints. Since the rhs value for free vertices are 0, we
@@ -169,41 +246,108 @@ void AdmmSolver::SolveOneIteration() {
     rhs.block<3, 3>(vertex_num + 3 * v, 0)
       = rho_ * (S_[v] - T_[v]).transpose();
   }
-  // Solve.
-  Eigen::VectorXd solution;
-  for (int i = 0; i < 3; ++i) {
-    solution = solver_.solve(rhs.col(i));
-    if (solver_.info() != Eigen::Success) {
-      std::cout << "Fail to solve the sparse linear system." << std::endl;
-      return;
-    }
-    // Sanity check the dimension of the solution.
-    if (solution.size() != 4 * vertex_num) {
-      std::cout << "Fail to write back solution: dimension mismatch."
-        << std::endl;
-      return;
-    }
-    // Sanity check the value of the solution.
-    if ((M_ * solution - rhs.col(i)).squaredNorm() > kMatrixDiffThreshold) {
-      std::cout << "Sparse linear solver is wrong!" << std::endl;
-      return;
-    }
-    // Write back the solutions.
-    vertices_updated_.col(i) = solution.segment(0, vertex_num);
-    for (int v = 0; v < vertex_num; ++v) {
-      rotations_[v].row(i) = solution.segment(vertex_num + 3 * v, 3);
-    }
+  // End of Method 1. ***/
+
+  // Method 2:
+  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(4 * vertex_num, 3);
+  // f(x) = w||Ax-b||^2:
+  // (\sum 2wA'A)x = \sum 2wA'b
+  // Add the rotation constraints.
+  for (int v = 0; v < vertex_num; ++v) {
+    // What is the weight?
+    double w = rho_ / 2;
+    // What is A?
+    Eigen::SparseMatrix<double> A;
+    A.resize(3, 4 * vertex_num);
+    A.coeffRef(0, GetMatrixVariablePos(vertex_num, v, 0)) = 1;
+    A.coeffRef(1, GetMatrixVariablePos(vertex_num, v, 1)) = 1;
+    A.coeffRef(2, GetMatrixVariablePos(vertex_num, v, 2)) = 1;
+    // What is b?
+    Eigen::Matrix3d B = (S_[v] - T_[v]).transpose();
+    rhs += (2 * w * A.transpose() * B);
   }
+  // Add constraints for fixed vertices.
+  for (int i = 0; i < fixed_num; ++i) {
+    // What is th position of this fixed vertex?
+    int pos = fixed_(i);
+    // What is the weight w?
+    double w = rho_ / 2;
+    // What is A?
+    Eigen::SparseMatrix<double> A;
+    A.resize(1, 4 * vertex_num);
+    A.coeffRef(0, pos) = 1;
+    // What is b?
+    Eigen::Vector3d b = fixed_vertices_.row(i) - u_.row(i);
+    rhs += (2 * w * A.transpose() * b.transpose());
+  }
+  // End of Method 2. ***/
+  // The two methods have been double checked with each other, it turns out
+  // they both give the same rhs! We are free to use either of them (Probably
+  // tend to use Method 1 here because it looks shorter).
+
+  // Solve.
+  Eigen::MatrixXd solution = solver_.solve(rhs);
+  if (solver_.info() != Eigen::Success) {
+    std::cout << "Fail to solve the sparse linear system." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  // Sanity check the dimension of the solution.
+  if (solution.rows() != 4 * vertex_num) {
+    std::cout << "Fail to write back solution: dimension mismatch."
+      << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  // Sanity check the value of the solution.
+  if ((M_ * solution - rhs).squaredNorm() > kMatrixDiffThreshold) {
+    std::cout << "Sparse linear solver is wrong!" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  // Write back the solutions.
+  vertices_updated_ = solution.topRows(vertex_num);
+  for (int v = 0; v < vertex_num; ++v) {
+    rotations_[v] = solution.block<3, 3>(vertex_num + 3 * v, 0).transpose();
+  }
+#ifdef USE_TEST_FUNCTIONS
+  // Sanity check whether it is really the optimal solution!
+  if (!CheckLinearSolve()) {
+    std::cout << "Iteration terminated due to the linear solve error."
+      << std::endl;
+    exit(EXIT_FAILURE);
+  }
+#endif
 
   // Step 2: SVD solve.
-  // Input: rotations_, S_, T_.
+#ifdef USE_TEST_FUNCTIONS
+  // Compute the energy before optimization.
+  const double infty = std::numeric_limits<double>::infinity();
+  const double energy_before_svd = ComputeSVDSolveEnergy();
+#endif
+  // Input: R, S_, T_.
   // Output: S_.
+  // The solution can be found in wikipedia:
+  // http://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
+  // R + T = U\Sigma V' S = UV'
+  // The problem is (for reference):
+  // \min_{S} \|S - (R + T)\|^2 s.t. S\in SO(3)
+  // i.e., given R + T, find the closest SO(3) matrix.
   for (int i = 0; i < vertex_num; ++i) {
     Eigen::Matrix3d rotation;
-    Eigen::Matrix3d res = (rotations_[i] + T_[i]).transpose();
+    Eigen::Matrix3d res = rotations_[i] + T_[i];
     igl::polar_svd3x3(res, rotation);
-    S_[i] = rotation.transpose();
+    S_[i] = rotation;
   }
+#ifdef USE_TEST_FUNCTIONS
+  const double energy_after_svd = ComputeSVDSolveEnergy();
+  // Test whether the energy really decreases.
+  if (energy_before_svd == infty || energy_after_svd == infty
+      || energy_before_svd < energy_after_svd - kEnergyTolerance) {
+    std::cout << "Iteration terminated due to the svd solve error."
+      << std::endl << "Energy before SVD: " << energy_before_svd
+      << std::endl << "Energy after SVD: " << energy_after_svd
+      << std::endl;
+    exit(EXIT_FAILURE);
+  }
+#endif
 
   // Step 3: update u.
   for (int j = 0; j < fixed_num; ++j) {
@@ -253,15 +397,9 @@ double AdmmSolver::ComputeEnergy() const {
   // whether they belong to SO(3).
   double infty = std::numeric_limits<double>::infinity();
   int vertex_num = vertices_.rows();
-  Eigen::Matrix3d iden = Eigen::Matrix3d::Identity();
   for (int i = 0; i < vertex_num; ++i) {
-    Eigen::Matrix3d si = S_[i];
-    double det = si.determinant();
-    if ((si * si.transpose() - iden).squaredNorm() > kMatrixDiffThreshold
-      || abs(det - 1) > kMatrixDiffThreshold) {
-      std::cout << "Si does not belong to SO(3) -- This should never happen.\n"
-        << "i = " << i << " det = " << det << std::endl
-        << "Si * Si' = \n" << si * si.transpose() << std::endl;
+    if (!IsSO3(S_[i])) {
+      std::cout << "This should never happen!" << std::endl;
       return infty;
     }
   }
@@ -302,6 +440,141 @@ double AdmmSolver::ComputeEnergy() const {
   vertex_aug_energy *= half_rho;
   energy += vertex_aug_energy;
   return energy;
+}
+
+bool AdmmSolver::CheckLinearSolve() const {
+  // Compute the linear solve energy.
+  // Don't pollute the solution! Play with a copy instead.
+  Eigen::MatrixXd vertices = vertices_updated_;
+  std::vector<Eigen::Matrix3d> R = rotations_;
+  double optimal_energy = ComputeLinearSolveEnergy(vertices, R);
+  std::cout << "Optimal energy: " << optimal_energy << std::endl;
+  int rows = vertices.rows();
+  int cols = vertices.cols();
+  double delta = 0.02;
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < cols; ++j) {
+      // Perturb solution(i, j) a little bit.
+      vertices(i, j) += delta;
+      double perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
+      if (perturbed_enrgy < optimal_energy) {
+        std::cout << "Linear solve check failed!" << std::endl;
+        std::cout << "Optimal energy: " << optimal_energy << std::endl;
+        std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
+        std::cout << "Error occurs in (" << i << ", " << j << ")" << std::endl;
+        return false;
+      }
+      // Reset value.
+      vertices(i, j) = vertices_updated_(i, j);
+      // Perturb in another direction.
+      vertices(i, j) -= delta;
+      perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
+      if (perturbed_enrgy < optimal_energy) {
+        std::cout << "Linear solve check failed!" << std::endl;
+        std::cout << "Optimal energy: " << optimal_energy << std::endl;
+        std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
+        std::cout << "Error occurs in (" << i << ", " << j << ")" << std::endl;
+        return false;
+      }
+    }
+  }
+  // Perturb the rotations.
+  int vertex_num = vertices_.rows();
+  for (int v = 0; v < vertex_num; ++v) {
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        // Perturb R[v](i, j).
+        R[v](i, j) += delta;
+        double perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
+        if (perturbed_enrgy < optimal_energy) {
+          std::cout << "Linear solve check failed!" << std::endl;
+          std::cout << "Optimal linear solve energy: " << optimal_energy << std::endl;
+          std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
+          std::cout << "Error occurs in (" << v << ")" << std::endl;
+          return false;
+        }
+        R[v](i, j) = rotations_[v](i, j);
+        R[v](i, j) -= delta;
+        perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
+        if (perturbed_enrgy < optimal_energy) {
+          std::cout << "Linear solve check failed!" << std::endl;
+          std::cout << "Optimal energy: " << optimal_energy << std::endl;
+          std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
+          std::cout << "Error occurs in (" << v << ")" << std::endl;
+          return false;
+        }
+      }
+    }
+  }
+  std::cout << "All linear solve tests passed!" << std::endl;
+  return true;
+}
+
+double AdmmSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
+    const std::vector<Eigen::Matrix3d> &rotations) const {
+  // Compute the linear solve energy.
+  double energy = 0.0;
+  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
+  int face_num = faces_.rows();
+  int vertex_num = vertices_.rows();
+  for (int f = 0; f < face_num; ++f) {
+    // Loop over all the edges.
+    for (int e = 0; e < 3; ++e) {
+      int first = faces_(f, edge_map[e][0]);
+      int second = faces_(f, edge_map[e][1]);
+      double edge_energy = 0.0;
+      double weight = weight_.coeff(first, second);
+      Eigen::Vector3d vec = (vertices.row(first) -
+          vertices.row(second)).transpose() -
+          rotations[first] * (vertices_.row(first) -
+          vertices_.row(second)).transpose();
+      edge_energy = weight * vec.squaredNorm();
+      energy += edge_energy;
+    }
+  }
+  // Add up the augmented rotation term.
+  double weight = rho_ / 2;
+  for (int v = 0; v < vertex_num; ++v) {
+    energy += weight * (rotations[v] - S_[v] + T_[v]).squaredNorm();
+  }
+  // Add up the fixed vertices term.
+  int fixed_num = fixed_.size();
+  for (int i = 0; i < fixed_num; ++i) {
+    int pos = fixed_(i);
+    energy += weight * (vertices.row(pos) - fixed_vertices_.row(i)
+        + u_.row(i)).squaredNorm();
+  }
+  return energy;
+}
+
+// Compute the SVD solve energy. Used in CheckSVDSolve.
+double AdmmSolver::ComputeSVDSolveEnergy() const {
+  double infty = std::numeric_limits<double>::infinity();
+  int vertex_num = vertices_.rows();
+  for (int v = 0; v < vertex_num; ++v) {
+    if (!IsSO3(S_[v])) {
+      return infty;
+    }
+  }
+  double energy = 0.0;
+  for (int v = 0; v < vertex_num; ++v) {
+    energy += (rotations_[v] - S_[v] + T_[v]).squaredNorm();
+
+  }
+  energy *= rho_ / 2;
+  return energy;
+}
+
+// Check whether a matrix is in SO(3).
+bool AdmmSolver::IsSO3(const Eigen::Matrix3d &S) const {
+  double det = S.determinant();
+  if ((S * S.transpose() - Eigen::Matrix3d::Identity()).squaredNorm()
+      > kMatrixDiffThreshold || abs(det - 1) > kMatrixDiffThreshold) {
+    std::cout << "S does not belong to SO(3)" << std::endl;
+    std::cout << "S: \n" << S << std::endl;
+    return false;
+  }
+  return true;
 }
 
 }  // namespace demo

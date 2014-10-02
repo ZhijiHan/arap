@@ -26,6 +26,24 @@ class AdmmSolver : public Solver {
   double ComputeEnergy() const;
 
  private:
+  // A helper function to compute |matrix_id|'s |variable_id|-th variable's
+  // position.
+  int GetMatrixVariablePos(int vertex_num, int matrix_id, int variable_id);
+
+  // A helper function to verify our linear solve. Returns true if the current
+  // vertices_updated_ and rotations_ are the optimal solution.
+  bool CheckLinearSolve() const;
+
+  // Compute the linear solve energy. Used in CheckLinearSolve.
+  double ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
+      const std::vector<Eigen::Matrix3d> &rotations) const;
+
+  // Compute the SVD solve energy. Used in CheckSVDSolve.
+  double ComputeSVDSolveEnergy() const;
+
+  // Check whether a matrix is in SO(3).
+  bool IsSO3(const Eigen::Matrix3d &S) const;
+
   // Computes the cotangent angle in one face indicated by |face_id|.
   Eigen::Vector3d ComputeCotangent(int face_id) const;
 
@@ -44,6 +62,11 @@ class AdmmSolver : public Solver {
   // Sparse linear solver. Use Cholmod from SuiteSparse.
   Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
 };
+
+inline int AdmmSolver::GetMatrixVariablePos(int vertex_num, int matrix_id,
+    int variable_id) {
+  return vertex_num + 3 * matrix_id + variable_id;
+}
 
 }  // namespace demo
 }  // namespace arap
