@@ -1,3 +1,4 @@
+#include "admmfixedsolver.h"
 #include "admmfreesolver.h"
 #include "arapsolver.h"
 
@@ -155,6 +156,11 @@ int main(int argc, char *argv[]) {
   if (algorithm == "arap") {
     std::cout << "Use ArapSolver." << std::endl;
     solver = new arap::demo::ArapSolver(V, F, b, iter_num);
+  } else if (algorithm == "admm-fixed") {
+    std::cout << "Use AdmmFixedSolver." << std::endl;
+    double rho = atof(argv[6]);
+    std::cout << "rho = " << rho << std::endl;
+    solver = new arap::demo::AdmmFixedSolver(V, F, b, iter_num, rho);
   } else if (algorithm == "admm-free") {
     std::cout << "Use AdmmFreeSolver." << std::endl;
     double rho = atof(argv[6]);
