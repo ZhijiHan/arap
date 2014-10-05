@@ -1,4 +1,4 @@
-#include "admmsolver.h"
+#include "admmfreesolver.h"
 
 // C++ standard library
 #include <iostream>
@@ -16,14 +16,14 @@ namespace demo {
 const double kMatrixDiffThreshold = 1e-6;
 const double kEnergyTolerance = 0.02;
 
-AdmmSolver::AdmmSolver(const Eigen::MatrixXd& vertices,
+AdmmFreeSolver::AdmmFreeSolver(const Eigen::MatrixXd& vertices,
     const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
     int max_iteration, double rho)
   : Solver(vertices, faces, fixed, max_iteration),
   rho_(rho) {
 }
 
-void AdmmSolver::Precompute() {
+void AdmmFreeSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
   int fixed_num = fixed_.size();
@@ -191,7 +191,7 @@ void AdmmSolver::Precompute() {
   }
 }
 
-void AdmmSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
+void AdmmFreeSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   // Cache fixed_vertices.
   fixed_vertices_ = fixed_vertices;
   // Check the dimension is correct.
@@ -216,7 +216,7 @@ void AdmmSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   u_ = Eigen::MatrixXd::Zero(fixed_num, 3);
 }
 
-void AdmmSolver::SolveOneIteration() {
+void AdmmFreeSolver::SolveOneIteration() {
   int fixed_num = fixed_.size();
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
@@ -360,7 +360,7 @@ void AdmmSolver::SolveOneIteration() {
   }
 }
 
-Eigen::Vector3d AdmmSolver::ComputeCotangent(int face_id) const {
+Eigen::Vector3d AdmmFreeSolver::ComputeCotangent(int face_id) const {
   Eigen::Vector3d cotangent(0.0, 0.0, 0.0);
   // The triangle is defined as follows:
   //            A
@@ -391,7 +391,7 @@ Eigen::Vector3d AdmmSolver::ComputeCotangent(int face_id) const {
   return cotangent;
 }
 
-Energy AdmmSolver::ComputeEnergy() const {
+Energy AdmmFreeSolver::ComputeEnergy() const {
   // Compute the energy.
   Energy energy;
   // In order to do early return, let's first test all the S_ matrices to see
@@ -450,7 +450,7 @@ Energy AdmmSolver::ComputeEnergy() const {
   return energy;
 }
 
-bool AdmmSolver::CheckLinearSolve() const {
+bool AdmmFreeSolver::CheckLinearSolve() const {
   // Compute the linear solve energy.
   // Don't pollute the solution! Play with a copy instead.
   Eigen::MatrixXd vertices = vertices_updated_;
@@ -518,7 +518,7 @@ bool AdmmSolver::CheckLinearSolve() const {
   return true;
 }
 
-double AdmmSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
+double AdmmFreeSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
     const std::vector<Eigen::Matrix3d> &rotations) const {
   // Compute the linear solve energy.
   double energy = 0.0;
@@ -556,7 +556,7 @@ double AdmmSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
 }
 
 // Compute the SVD solve energy. Used in CheckSVDSolve.
-double AdmmSolver::ComputeSVDSolveEnergy() const {
+double AdmmFreeSolver::ComputeSVDSolveEnergy() const {
   double infty = std::numeric_limits<double>::infinity();
   int vertex_num = vertices_.rows();
   for (int v = 0; v < vertex_num; ++v) {
@@ -574,7 +574,7 @@ double AdmmSolver::ComputeSVDSolveEnergy() const {
 }
 
 // Check whether a matrix is in SO(3).
-bool AdmmSolver::IsSO3(const Eigen::Matrix3d &S) const {
+bool AdmmFreeSolver::IsSO3(const Eigen::Matrix3d &S) const {
   double det = S.determinant();
   if ((S * S.transpose() - Eigen::Matrix3d::Identity()).squaredNorm()
       > kMatrixDiffThreshold || abs(det - 1) > kMatrixDiffThreshold) {

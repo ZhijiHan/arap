@@ -1,5 +1,5 @@
-#ifndef _ARAP_DEMO_ADMMSOLVER_H_
-#define _ARAP_DEMO_ADMMSOLVER_H_
+#ifndef _ARAP_DEMO_ADMMFREESOLVER_H_
+#define _ARAP_DEMO_ADMMFREESOLVER_H_
 
 #include "Eigen/CholmodSupport"
 
@@ -8,9 +8,9 @@
 namespace arap {
 namespace demo {
 
-class AdmmSolver : public Solver {
+class AdmmFreeSolver : public Solver {
  public:
-  AdmmSolver(const Eigen::MatrixXd& vertices, const Eigen::MatrixXi& faces,
+  AdmmFreeSolver(const Eigen::MatrixXd& vertices, const Eigen::MatrixXi& faces,
       const Eigen::VectorXi& fixed, int max_iteration, double rho);
 
   // Pre computes cotangent weight and left matrix in ADMM.
@@ -47,7 +47,7 @@ class AdmmSolver : public Solver {
   // Computes the cotangent angle in one face indicated by |face_id|.
   Eigen::Vector3d ComputeCotangent(int face_id) const;
 
-  // Defines private data members for AdmmSolver.
+  // Defines private data members for AdmmFreeSolver.
   // Control parameters in ADMM.
   double rho_;
   // S_ is the variables introduced in ADMM.
@@ -63,7 +63,7 @@ class AdmmSolver : public Solver {
   Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
 };
 
-inline int AdmmSolver::GetMatrixVariablePos(int vertex_num, int matrix_id,
+inline int AdmmFreeSolver::GetMatrixVariablePos(int vertex_num, int matrix_id,
     int variable_id) {
   return vertex_num + 3 * matrix_id + variable_id;
 }
@@ -71,4 +71,4 @@ inline int AdmmSolver::GetMatrixVariablePos(int vertex_num, int matrix_id,
 }  // namespace demo
 }  // namespace arap
 
-#endif  // _ARAP_DEMO_ADMMSOLVER_H_
+#endif  // _ARAP_DEMO_ADMMFREESOLVER_H_
