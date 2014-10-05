@@ -391,8 +391,9 @@ Eigen::Vector3d AdmmSolver::ComputeCotangent(int face_id) const {
   return cotangent;
 }
 
-double AdmmSolver::ComputeEnergy() const {
+Energy AdmmSolver::ComputeEnergy() const {
   // Compute the energy.
+  Energy energy;
   // In order to do early return, let's first test all the S_ matrices to see
   // whether they belong to SO(3).
   double infty = std::numeric_limits<double>::infinity();
@@ -400,12 +401,14 @@ double AdmmSolver::ComputeEnergy() const {
   for (int i = 0; i < vertex_num; ++i) {
     if (!IsSO3(S_[i])) {
       std::cout << "This should never happen!" << std::endl;
-      return infty;
+      energy.AddEnergyType("Total", infty);
+      return energy;
     }
   }
+
   // Now it passes the indicator function, the energy should be finite.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  double energy = 0.0;
+  double total = 0.0;
   int face_num = faces_.rows();
   for (int f = 0; f < face_num; ++f) {
     // Loop over all the edges.
@@ -419,9 +422,11 @@ double AdmmSolver::ComputeEnergy() const {
           rotations_[first] * (vertices_.row(first) -
           vertices_.row(second)).transpose();
       edge_energy = weight * vec.squaredNorm();
-      energy += edge_energy;
+      total += edge_energy;
     }
   }
+  energy.AddEnergyType("ARAP", total);
+
   // Add augmented term.
   double half_rho = rho_ / 2;
   double rotation_aug_energy = 0.0;
@@ -429,7 +434,8 @@ double AdmmSolver::ComputeEnergy() const {
     rotation_aug_energy += (rotations_[i] - S_[i]).squaredNorm();
   }
   rotation_aug_energy *= half_rho;
-  energy += rotation_aug_energy;
+  total += rotation_aug_energy;
+  energy.AddEnergyType("Rotation", rotation_aug_energy);
 
   int fixed_num = fixed_.size();
   double vertex_aug_energy = 0.0;
@@ -438,7 +444,9 @@ double AdmmSolver::ComputeEnergy() const {
       - fixed_vertices_.row(i)).squaredNorm();
   }
   vertex_aug_energy *= half_rho;
-  energy += vertex_aug_energy;
+  total += vertex_aug_energy;
+  energy.AddEnergyType("Vertex", vertex_aug_energy);
+  energy.AddEnergyType("Total", total);
   return energy;
 }
 

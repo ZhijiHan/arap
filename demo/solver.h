@@ -4,6 +4,8 @@
 #include "Eigen/Dense"
 #include "Eigen/Sparse"
 
+#include "energy.h"
+
 namespace arap {
 namespace demo {
 
@@ -64,7 +66,7 @@ class Solver {
   int GetMaxIteration() const;
 
   // Given all the current data members, compute the energy.
-  virtual double ComputeEnergy() const = 0;
+  virtual Energy ComputeEnergy() const = 0;
 
  protected:
   // vertices_ is a # of vertices by 3 matrix. Each row in vertices_ represents

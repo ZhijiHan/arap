@@ -186,10 +186,10 @@ Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {
   return cotangent;
 }
 
-double ArapSolver::ComputeEnergy() const {
+Energy ArapSolver::ComputeEnergy() const {
   // Compute the energy.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  double energy = 0.0;
+  double total = 0.0;
   int face_num = faces_.rows();
   for (int f = 0; f < face_num; ++f) {
     // Loop over all the edges.
@@ -203,9 +203,11 @@ double ArapSolver::ComputeEnergy() const {
           rotations_[first] * (vertices_.row(first) -
           vertices_.row(second)).transpose();
       edge_energy = weight * vec.squaredNorm();
-      energy += edge_energy;
+      total += edge_energy;
     }
   }
+  Energy energy;
+  energy.AddEnergyType("Total", total);
   return energy;
 }
 

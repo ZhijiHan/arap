@@ -23,7 +23,7 @@ class AdmmSolver : public Solver {
   void SolveOneIteration();
 
   // Given all the current data members, compute the energy.
-  double ComputeEnergy() const;
+  Energy ComputeEnergy() const;
 
  private:
   // A helper function to compute |matrix_id|'s |variable_id|-th variable's

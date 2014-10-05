@@ -93,8 +93,8 @@ bool pre_draw(igl::Viewer& viewer) {
     || iteration >= solver->GetMaxIteration())
     return false;
   solver->SolveOneIteration();
-  double energy = solver->ComputeEnergy();
-  std::cout << "Iteration: " << iteration << " Energy: " << energy << std::endl;
+  arap::demo::Energy energy = solver->ComputeEnergy();
+  std::cout << "Iteration: " << iteration << " Energy: " << energy;
   Eigen::MatrixXd solution = solver->GetVertexSolution();
   viewer.data.set_vertices(solution);
   viewer.data.set_points(bc, C);

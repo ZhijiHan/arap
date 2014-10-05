@@ -23,7 +23,7 @@ class ArapSolver : public Solver {
   void SolveOneIteration();
 
   // Given all the current data members, compute the energy.
-  double ComputeEnergy() const;
+  Energy ComputeEnergy() const;
 
  private:
   // Computes the cotangent angle in one face indicated by |face_id|.
