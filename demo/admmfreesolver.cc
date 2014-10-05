@@ -456,7 +456,7 @@ bool AdmmFreeSolver::CheckLinearSolve() const {
   Eigen::MatrixXd vertices = vertices_updated_;
   std::vector<Eigen::Matrix3d> R = rotations_;
   double optimal_energy = ComputeLinearSolveEnergy(vertices, R);
-  std::cout << "Optimal energy: " << optimal_energy << std::endl;
+  std::cout << "Optimal linear energy: " << optimal_energy << std::endl;
   int rows = vertices.rows();
   int cols = vertices.cols();
   double delta = 0.02;
@@ -484,6 +484,8 @@ bool AdmmFreeSolver::CheckLinearSolve() const {
         std::cout << "Error occurs in (" << i << ", " << j << ")" << std::endl;
         return false;
       }
+      // Reset value.
+      vertices(i, j) = vertices_updated_(i, j);
     }
   }
   // Perturb the rotations.
@@ -511,6 +513,7 @@ bool AdmmFreeSolver::CheckLinearSolve() const {
           std::cout << "Error occurs in (" << v << ")" << std::endl;
           return false;
         }
+        R[v](i, j) = rotations_[v](i, j);
       }
     }
   }
@@ -567,7 +570,6 @@ double AdmmFreeSolver::ComputeSVDSolveEnergy() const {
   double energy = 0.0;
   for (int v = 0; v < vertex_num; ++v) {
     energy += (rotations_[v] - S_[v] + T_[v]).squaredNorm();
-
   }
   energy *= rho_ / 2;
   return energy;

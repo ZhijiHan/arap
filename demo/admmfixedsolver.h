@@ -28,7 +28,7 @@ class AdmmFixedSolver : public Solver {
  private:
   // A helper function to compute |matrix_id|'s |variable_id|-th variable's
   // position.
-  int GetMatrixVariablePos(int vertex_num, int matrix_id, int variable_id);
+  int GetMatrixVariablePos(int matrix_id, int variable_id) const;
 
   // A helper function to verify our linear solve. Returns true if the current
   // vertices_updated_ and rotations_ are the optimal solution.
@@ -54,18 +54,16 @@ class AdmmFixedSolver : public Solver {
   std::vector<Eigen::Matrix3d> S_;
   // T_ is the corresponding dual variables for rotations_ - S_ = 0.
   std::vector<Eigen::Matrix3d> T_;
-  // u_ is the dual variables for constraints p - c = 0. The row of u_ is the
-  // # of fixed vertices, and the column is 3.
-  Eigen::MatrixXd u_;
   // M is the left matrix in the linear solve.
   Eigen::SparseMatrix<double> M_;
   // Sparse linear solver. Use Cholmod from SuiteSparse.
   Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
 };
 
-inline int AdmmFixedSolver::GetMatrixVariablePos(int vertex_num, int matrix_id,
-    int variable_id) {
-  return vertex_num + 3 * matrix_id + variable_id;
+inline int AdmmFixedSolver::GetMatrixVariablePos(
+    int matrix_id, int variable_id) const {
+  const int free_num = free_.size();
+  return free_num + 3 * matrix_id + variable_id;
 }
 
 }  // namespace demo

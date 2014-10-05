@@ -23,10 +23,12 @@ AdmmFixedSolver::AdmmFixedSolver(const Eigen::MatrixXd& vertices,
   rho_(rho) {
 }
 
+// TODO
 void AdmmFixedSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
   int fixed_num = fixed_.size();
+  int free_num = free_.size();
 
   // Compute weight_.
   weight_.resize(vertex_num, vertex_num);
@@ -55,15 +57,15 @@ void AdmmFixedSolver::Precompute() {
 
   // Compute the left matrix M_.
   // The dimension of M_ should be # of constraints by # of unknowns. i.e.,
-  // (4 * vertex_num) * (4 * vertex_num).
+  // (free_num + 3 * vertex_num) * (free_num + 3 * vertex_num).
   // The arrangement is as follows:
   // variables(columns in M_):
   // col(i): vertex position for p_i.
-  // col(vertex_num + 3 * i : vertex_num + 3 * i + 2): the first to third
+  // col(free_num + 3 * i : free_num + 3 * i + 2): the first to third
   // columns in R_i.
   // constraints(rows in M_):
-  // row(0 : vertex_num - 1): constraints for each vertex.
-  // row(vertex_num : 4 * vertex_num - 1): constraints for rotations.
+  // row(0 : free_num - 1): constraints for each vertex.
+  // row(free_num : free_num + 3 * vertex_num - 1): constraints for rotations.
   // Note that the problem can be decomposed to solve in three dimensions.
 
   // Here we have two methods to compute M_. The first one is to compute the
@@ -124,7 +126,7 @@ void AdmmFixedSolver::Precompute() {
   // (\sum 2wA'A)x = \sum 2wA'b
 
   // Start of the second method.
-  M_.resize(4 * vertex_num, 4 * vertex_num);
+  M_.resize(free_num + 3 * vertex_num, free_num + 3 * vertex_num);
   // Loop over all the edges.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   for (int f = 0; f < face_num; ++f) {
@@ -132,6 +134,13 @@ void AdmmFixedSolver::Precompute() {
     for (int e = 0; e < 3; ++e) {
       int first = faces_(f, edge_map[e][0]);
       int second = faces_(f, edge_map[e][1]);
+      // Check the type of first and second.
+      VertexType first_type = vertex_info_[first].type;
+      VertexType second_type = vertex_info_[second].type;
+      if (first_type == VertexType::Fixed && second_type == VertexType::Fixed) {
+        // Don't need to do anything.
+        continue;
+      }
       // What is p_1 - p_2?
       Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
       // What is the weight?
@@ -139,16 +148,19 @@ void AdmmFixedSolver::Precompute() {
       // What is the dimension of A?
       // A is a one line sparse row vector!
       Eigen::SparseMatrix<double> A;
-      A.resize(1, 4 * vertex_num);
+      A.resize(1, free_num + 3 * vertex_num);
       // Compute A.
-      A.coeffRef(0, first) = 1;
-      A.coeffRef(0, second) = -1;
-      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 0)) = -v(0);
-      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 1)) = -v(1);
-      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 2)) = -v(2);
+      if (first_type == VertexType::Free) {
+        A.coeffRef(0, vertex_info_[first].pos) = 1;
+      }
+      if (second_type == VertexType::Free) {
+        A.coeffRef(0, vertex_info_[second].pos) = -1;
+      }
+      A.coeffRef(0, GetMatrixVariablePos(first, 0)) = -v(0);
+      A.coeffRef(0, GetMatrixVariablePos(first, 1)) = -v(1);
+      A.coeffRef(0, GetMatrixVariablePos(first, 2)) = -v(2);
       // Add A to M_.
       M_ = M_ + 2 * weight * A.transpose() * A;
-      // What is b? b is zero!
     }
   }
   // Add the rotation constraints.
@@ -157,28 +169,14 @@ void AdmmFixedSolver::Precompute() {
     double w = rho_ / 2;
     // What is A?
     Eigen::SparseMatrix<double> A;
-    A.resize(3, 4 * vertex_num);
-    A.coeffRef(0, GetMatrixVariablePos(vertex_num, v, 0)) = 1;
-    A.coeffRef(1, GetMatrixVariablePos(vertex_num, v, 1)) = 1;
-    A.coeffRef(2, GetMatrixVariablePos(vertex_num, v, 2)) = 1;
-    // Add A to M_.
-    M_ = M_ + 2 * w * A.transpose() * A;
-  }
-  // Add constraints for fixed vertices.
-  for (int i = 0; i < fixed_num; ++i) {
-    // What is th position of this fixed vertex?
-    int pos = fixed_(i);
-    // What is the weight w?
-    double w = rho_ / 2;
-    // What is A?
-    Eigen::SparseMatrix<double> A;
-    A.resize(1, 4 * vertex_num);
-    A.coeffRef(0, pos) = 1;
+    A.resize(3, free_num + 3 * vertex_num);
+    A.coeffRef(0, GetMatrixVariablePos(v, 0)) = 1;
+    A.coeffRef(1, GetMatrixVariablePos(v, 1)) = 1;
+    A.coeffRef(2, GetMatrixVariablePos(v, 2)) = 1;
     // Add A to M_.
     M_ = M_ + 2 * w * A.transpose() * A;
   }
   // End of the second method.
-  // We have compared M_ from both methods, and they're the same!
 
   // Post-processing: compress M_, factorize it.
   M_.makeCompressed();
@@ -202,6 +200,11 @@ void AdmmFixedSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   }
   // Initialize with vertices_.
   vertices_updated_ = vertices_;
+  // Enforce the fixed vertices in vertices_updated_.
+  for (int i = 0; i < fixed_num; ++i) {
+    int pos = fixed_(i);
+    vertices_updated_.row(pos) = fixed_vertices_.row(i);
+  }
   // Initialize rotations_ with Identity matrices.
   rotations_.clear();
   int vertex_num = vertices_.rows();
@@ -212,20 +215,19 @@ void AdmmFixedSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   // Initialize T_ with zero matrices.
   T_.clear();
   T_.resize(vertex_num, Eigen::Matrix3d::Zero());
-  // Initialize u_ with zeros.
-  u_ = Eigen::MatrixXd::Zero(fixed_num, 3);
 }
 
+// TODO
 void AdmmFixedSolver::SolveOneIteration() {
   int fixed_num = fixed_.size();
+  int free_num = free_.size();
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
 
   // The iteration contains four steps:
   // Step 1: linear solve.
   // Step 2: SVD solve.
-  // Step 3: update u.
-  // Step 4: update T.
+  // Step 3: update T.
 
   // Step 1: linear solve.
   // Note that the problem can be decomposed in three dimensions.
@@ -249,36 +251,67 @@ void AdmmFixedSolver::SolveOneIteration() {
   // End of Method 1. ***/
 
   // Method 2:
-  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(4 * vertex_num, 3);
+  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num + 3 * vertex_num, 3);
   // f(x) = w||Ax-b||^2:
   // (\sum 2wA'A)x = \sum 2wA'b
+  // Add edge term.
+  // Loop over all the edges.
+  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
+  for (int f = 0; f < face_num; ++f) {
+    // Loop over all the edges.
+    for (int e = 0; e < 3; ++e) {
+      int first = faces_(f, edge_map[e][0]);
+      int second = faces_(f, edge_map[e][1]);
+      // Check the type of first and second.
+      VertexType first_type = vertex_info_[first].type;
+      VertexType second_type = vertex_info_[second].type;
+      if (first_type == VertexType::Fixed && second_type == VertexType::Fixed) {
+        // Don't need to do anything.
+        continue;
+      }
+      // What is p_1 - p_2?
+      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
+      // What is the weight?
+      double weight = weight_.coeff(first, second);
+      // What is the dimension of A?
+      // A is a one line sparse row vector!
+      Eigen::SparseMatrix<double> A;
+      A.resize(1, free_num + 3 * vertex_num);
+      // Compute A.
+      if (first_type == VertexType::Free) {
+        A.coeffRef(0, vertex_info_[first].pos) = 1;
+      }
+      if (second_type == VertexType::Free) {
+        A.coeffRef(0, vertex_info_[second].pos) = -1;
+      }
+      A.coeffRef(0, GetMatrixVariablePos(first, 0)) = -v(0);
+      A.coeffRef(0, GetMatrixVariablePos(first, 1)) = -v(1);
+      A.coeffRef(0, GetMatrixVariablePos(first, 2)) = -v(2);
+      // What is the dimension of b?
+      Eigen::Vector3d b = Eigen::Vector3d::Zero();
+      if (first_type == VertexType::Fixed) {
+        b = -vertices_updated_.row(first);
+      }
+      if (second_type == VertexType::Fixed) {
+        b = vertices_updated_.row(second);
+      }
+      rhs += 2 * weight * A.transpose() * b.transpose();
+    }
+  }
+
   // Add the rotation constraints.
   for (int v = 0; v < vertex_num; ++v) {
     // What is the weight?
     double w = rho_ / 2;
     // What is A?
     Eigen::SparseMatrix<double> A;
-    A.resize(3, 4 * vertex_num);
-    A.coeffRef(0, GetMatrixVariablePos(vertex_num, v, 0)) = 1;
-    A.coeffRef(1, GetMatrixVariablePos(vertex_num, v, 1)) = 1;
-    A.coeffRef(2, GetMatrixVariablePos(vertex_num, v, 2)) = 1;
+    A.resize(3, free_num + 3 * vertex_num);
+    A.coeffRef(0, GetMatrixVariablePos(v, 0)) = 1;
+    A.coeffRef(1, GetMatrixVariablePos(v, 1)) = 1;
+    A.coeffRef(2, GetMatrixVariablePos(v, 2)) = 1;
     // What is b?
     Eigen::Matrix3d B = (S_[v] - T_[v]).transpose();
     rhs += (2 * w * A.transpose() * B);
-  }
-  // Add constraints for fixed vertices.
-  for (int i = 0; i < fixed_num; ++i) {
-    // What is th position of this fixed vertex?
-    int pos = fixed_(i);
-    // What is the weight w?
-    double w = rho_ / 2;
-    // What is A?
-    Eigen::SparseMatrix<double> A;
-    A.resize(1, 4 * vertex_num);
-    A.coeffRef(0, pos) = 1;
-    // What is b?
-    Eigen::Vector3d b = fixed_vertices_.row(i) - u_.row(i);
-    rhs += (2 * w * A.transpose() * b.transpose());
   }
   // End of Method 2. ***/
   // The two methods have been double checked with each other, it turns out
@@ -292,7 +325,7 @@ void AdmmFixedSolver::SolveOneIteration() {
     exit(EXIT_FAILURE);
   }
   // Sanity check the dimension of the solution.
-  if (solution.rows() != 4 * vertex_num) {
+  if (solution.rows() != free_num + 3 * vertex_num) {
     std::cout << "Fail to write back solution: dimension mismatch."
       << std::endl;
     exit(EXIT_FAILURE);
@@ -303,9 +336,11 @@ void AdmmFixedSolver::SolveOneIteration() {
     exit(EXIT_FAILURE);
   }
   // Write back the solutions.
-  vertices_updated_ = solution.topRows(vertex_num);
+  for (int i = 0; i < free_num; ++i) {
+    vertices_updated_.row(free_(i)) = solution.row(i);
+  }
   for (int v = 0; v < vertex_num; ++v) {
-    rotations_[v] = solution.block<3, 3>(vertex_num + 3 * v, 0).transpose();
+    rotations_[v] = solution.block<3, 3>(free_num + 3 * v, 0).transpose();
   }
 #ifdef USE_TEST_FUNCTIONS
   // Sanity check whether it is really the optimal solution!
@@ -349,12 +384,7 @@ void AdmmFixedSolver::SolveOneIteration() {
   }
 #endif
 
-  // Step 3: update u.
-  for (int j = 0; j < fixed_num; ++j) {
-    u_.row(j) += vertices_updated_.row(fixed_(j)) - fixed_vertices_.row(j);
-  }
-
-  // Step 4: update T.
+  // Step 3: update T.
   for (int i = 0; i < vertex_num; ++i) {
     T_[i] += rotations_[i] - S_[i];
   }
@@ -436,16 +466,6 @@ Energy AdmmFixedSolver::ComputeEnergy() const {
   rotation_aug_energy *= half_rho;
   total += rotation_aug_energy;
   energy.AddEnergyType("Rotation", rotation_aug_energy);
-
-  int fixed_num = fixed_.size();
-  double vertex_aug_energy = 0.0;
-  for (int i = 0; i < fixed_num; ++i) {
-    vertex_aug_energy += (vertices_updated_.row(fixed_(i))
-      - fixed_vertices_.row(i)).squaredNorm();
-  }
-  vertex_aug_energy *= half_rho;
-  total += vertex_aug_energy;
-  energy.AddEnergyType("Vertex", vertex_aug_energy);
   energy.AddEnergyType("Total", total);
   return energy;
 }
@@ -456,34 +476,36 @@ bool AdmmFixedSolver::CheckLinearSolve() const {
   Eigen::MatrixXd vertices = vertices_updated_;
   std::vector<Eigen::Matrix3d> R = rotations_;
   double optimal_energy = ComputeLinearSolveEnergy(vertices, R);
-  std::cout << "Optimal energy: " << optimal_energy << std::endl;
-  int rows = vertices.rows();
+  std::cout << "Optimal linear energy: " << optimal_energy << std::endl;
+  int free_num = free_.size();
   int cols = vertices.cols();
   double delta = 0.02;
-  for (int i = 0; i < rows; ++i) {
+  for (int i = 0; i < free_num; ++i) {
     for (int j = 0; j < cols; ++j) {
-      // Perturb solution(i, j) a little bit.
-      vertices(i, j) += delta;
+      int pos = free_(i);
+      vertices(pos, j) += delta;
       double perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
       if (perturbed_enrgy < optimal_energy) {
         std::cout << "Linear solve check failed!" << std::endl;
         std::cout << "Optimal energy: " << optimal_energy << std::endl;
         std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
-        std::cout << "Error occurs in (" << i << ", " << j << ")" << std::endl;
+        std::cout << "Error occurs in (" << pos << ", " << j << ")" << std::endl;
         return false;
       }
       // Reset value.
-      vertices(i, j) = vertices_updated_(i, j);
+      vertices(pos, j) = vertices_updated_(pos, j);
       // Perturb in another direction.
-      vertices(i, j) -= delta;
+      vertices(pos, j) -= delta;
       perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
       if (perturbed_enrgy < optimal_energy) {
         std::cout << "Linear solve check failed!" << std::endl;
         std::cout << "Optimal energy: " << optimal_energy << std::endl;
         std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
-        std::cout << "Error occurs in (" << i << ", " << j << ")" << std::endl;
+        std::cout << "Error occurs in (" << pos << ", " << j << ")" << std::endl;
         return false;
       }
+      // Reset value.
+      vertices(pos, j) = vertices_updated_(pos, j);
     }
   }
   // Perturb the rotations.
@@ -511,6 +533,7 @@ bool AdmmFixedSolver::CheckLinearSolve() const {
           std::cout << "Error occurs in (" << v << ")" << std::endl;
           return false;
         }
+        R[v](i, j) = rotations_[v](i, j);
       }
     }
   }
@@ -545,13 +568,6 @@ double AdmmFixedSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices
   for (int v = 0; v < vertex_num; ++v) {
     energy += weight * (rotations[v] - S_[v] + T_[v]).squaredNorm();
   }
-  // Add up the fixed vertices term.
-  int fixed_num = fixed_.size();
-  for (int i = 0; i < fixed_num; ++i) {
-    int pos = fixed_(i);
-    energy += weight * (vertices.row(pos) - fixed_vertices_.row(i)
-        + u_.row(i)).squaredNorm();
-  }
   return energy;
 }
 
@@ -567,7 +583,6 @@ double AdmmFixedSolver::ComputeSVDSolveEnergy() const {
   double energy = 0.0;
   for (int v = 0; v < vertex_num; ++v) {
     energy += (rotations_[v] - S_[v] + T_[v]).squaredNorm();
-
   }
   energy *= rho_ / 2;
   return energy;
