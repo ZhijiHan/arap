@@ -21,9 +21,6 @@
 #include <igl/svd3x3/arap.h>
 #include <igl/viewer/Viewer.h>
 
-#define USE_ARAP_SOLVER 0
-#define USE_ADMM_SOLVER 1
-
 // Vertex matrix. V is the original vertices from .off file, and U is the
 // vertices updated in each frame.
 Eigen::MatrixXd V, U;
@@ -43,7 +40,7 @@ Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
 // Our own implementation of ARAP.
-arap::demo::Solver* solver;
+arap::demo::Solver* solver = nullptr;
 
 // Color used to draw precomputed vertices.
 static const Eigen::RowVector3d kPurple(80.0 / 255.0,
@@ -114,11 +111,13 @@ bool key_down(igl::Viewer& viewer, unsigned char key, int mods) {
 }
 
 // Usage: ./demo_bin [.off file name] [.dmat file name] [frame number]
+// [algorithm name] [iteration number] [rho]
 int main(int argc, char *argv[]) {
-  if (argc < 4) {
+  if (argc < 6) {
     std::cout << "Not enough input parameters." << std::endl
               << "Usage: demo_bin [.off file name] [.dmat file name] "
-                 "[frame number]" << std::endl;
+                 "[frame number] [algorithm name] [iteration number] "
+                 "[rho]" << std::endl;
     return 0;
   }
   // Read V and F from file.
@@ -150,17 +149,19 @@ int main(int argc, char *argv[]) {
   // Compute the fixed vertices from the frame number.
   bc = ComputeFixedVertices(atoi(argv[3]));
 
-  // Add our own pre computation implementation here.
-#if USE_ARAP_SOLVER
-  std::cout << "Use ArapSolver." << std::endl;
-  solver = new arap::demo::ArapSolver(V, F, b, 500);
-#elif USE_ADMM_SOLVER
-  std::cout << "Use AdmmSolver." << std::endl;
-  double rho;
-  std::cout << "Input rho: " << std::endl;
-  std::cin >> rho;
-  solver = new arap::demo::AdmmSolver(V, F, b, 500, rho);
-#endif
+  // Parse the algorithm name.
+  std::string algorithm(argv[4]);
+  int iter_num = atoi(argv[5]);
+  if (algorithm == "arap") {
+    std::cout << "Use ArapSolver." << std::endl;
+    solver = new arap::demo::ArapSolver(V, F, b, iter_num);
+  } else if (algorithm == "admm") {
+    std::cout << "Use AdmmSolver." << std::endl;
+    double rho = atof(argv[6]);
+    std::cout << "rho = " << rho << std::endl;
+    solver = new arap::demo::AdmmSolver(V, F, b, iter_num, rho);
+  }
+
   solver->Precompute();
   // Prepare to solve the problem.
   solver->SolvePreprocess(bc);
