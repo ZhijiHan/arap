@@ -8,7 +8,7 @@
 #include "igl/slice.h"
 #include "igl/svd3x3/polar_svd3x3.h"
 
-//#define USE_TEST_FUNCTIONS
+#define USE_TEST_FUNCTIONS
 
 namespace arap {
 namespace demo {
@@ -459,28 +459,21 @@ bool AdmmFreeSolver::CheckLinearSolve() const {
   std::cout << "Optimal linear energy: " << optimal_energy << std::endl;
   int rows = vertices.rows();
   int cols = vertices.cols();
-  double delta = 0.02;
+  double delta = 0.001;
   for (int i = 0; i < rows; ++i) {
     for (int j = 0; j < cols; ++j) {
       // Perturb solution(i, j) a little bit.
       vertices(i, j) += delta;
       double perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
-      if (perturbed_enrgy < optimal_energy) {
-        std::cout << "Linear solve check failed!" << std::endl;
-        std::cout << "Optimal energy: " << optimal_energy << std::endl;
-        std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
-        std::cout << "Error occurs in (" << i << ", " << j << ")" << std::endl;
-        return false;
-      }
+      double product = perturbed_enrgy - optimal_energy;
       // Reset value.
       vertices(i, j) = vertices_updated_(i, j);
       // Perturb in another direction.
       vertices(i, j) -= delta;
       perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
-      if (perturbed_enrgy < optimal_energy) {
+      perturbed_enrgy *= (perturbed_enrgy - optimal_energy);
+      if (product < 0.0) {
         std::cout << "Linear solve check failed!" << std::endl;
-        std::cout << "Optimal energy: " << optimal_energy << std::endl;
-        std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
         std::cout << "Error occurs in (" << i << ", " << j << ")" << std::endl;
         return false;
       }
@@ -496,21 +489,21 @@ bool AdmmFreeSolver::CheckLinearSolve() const {
         // Perturb R[v](i, j).
         R[v](i, j) += delta;
         double perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
-        if (perturbed_enrgy < optimal_energy) {
-          std::cout << "Linear solve check failed!" << std::endl;
-          std::cout << "Optimal linear solve energy: " << optimal_energy << std::endl;
-          std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
-          std::cout << "Error occurs in (" << v << ")" << std::endl;
-          return false;
-        }
+        double product = perturbed_enrgy - optimal_energy;
         R[v](i, j) = rotations_[v](i, j);
         R[v](i, j) -= delta;
         perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
-        if (perturbed_enrgy < optimal_energy) {
+        product *= (perturbed_enrgy - optimal_energy);
+        if (product < 0.0) {
           std::cout << "Linear solve check failed!" << std::endl;
-          std::cout << "Optimal energy: " << optimal_energy << std::endl;
-          std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
-          std::cout << "Error occurs in (" << v << ")" << std::endl;
+          std::cout << "Error occurs in (" << v << ", " << i << ", " << j << ")" << std::endl;
+          // Print out the parabola.
+          std::cout << "Variable\tEnergy\n";
+          for (int step = -10; step < 10; ++step) {
+            R[v](i, j) = rotations_[v](i, j) + step * delta;
+            std::cout << R[v](i, j) << "\t" << ComputeLinearSolveEnergy(vertices, R)
+              << std::endl;
+          }
           return false;
         }
         R[v](i, j) = rotations_[v](i, j);
