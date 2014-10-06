@@ -9,6 +9,8 @@
 #include "igl/svd3x3/polar_svd3x3.h"
 
 //#define USE_TEST_FUNCTIONS
+#define USE_LINEAR_SOLVE_1
+//#define USE_LINEAR_SOLVE_2
 
 namespace arap {
 namespace demo {
@@ -70,6 +72,7 @@ void AdmmFixedSolver::Precompute() {
   // Here we have two methods to compute M_. The first one is to compute the
   // gradient directly. Unfortunately this is harder to program and check. So
   // we comment it out, and keep it here just for reference.
+#ifdef USE_LINEAR_SOLVE_1
   // Start of the first method: compute the gradient directly.
   M_.resize(free_num + 3 * vertex_num, free_num + 3 * vertex_num);
   for (int i = free_num; i < free_num + 3 * vertex_num; ++i) {
@@ -133,6 +136,7 @@ void AdmmFixedSolver::Precompute() {
     }
   }
   // End of computing the gradient directly. ***/
+#endif
 
   // The second method looks a lot nicer: First let's consider taking the
   // derivatives of f(x) = w||Ax-b||^2:
@@ -141,7 +145,8 @@ void AdmmFixedSolver::Precompute() {
   // So we can sum up all these terms to get the normal equation!
   // (\sum 2wA'A)x = \sum 2wA'b
 
-  /*** Start of the second method.
+#ifdef USE_LINEAR_SOLVE_2
+  // Start of the second method.
   M_.resize(free_num + 3 * vertex_num, free_num + 3 * vertex_num);
   // Loop over all the edges.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
@@ -187,7 +192,7 @@ void AdmmFixedSolver::Precompute() {
     M_ = M_ + rho_ * A.transpose() * A;
   }
   // End of the second method. ***/
-
+#endif
   // Post-processing: compress M_, factorize it.
   M_.makeCompressed();
 
@@ -245,6 +250,7 @@ void AdmmFixedSolver::SolveOneIteration() {
   // The first free_num constraints are for vertex, and the remaining
   // 3 * vertex_num constraints are for matrices.
   // Similarly, we implement two methods and cross check both of them.
+#ifdef USE_LINEAR_SOLVE_1
   // Method 1: Compute the derivatives directly.
   Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num + 3 * vertex_num, 3);
   // Build rhs.
@@ -272,12 +278,12 @@ void AdmmFixedSolver::SolveOneIteration() {
       if (first_type == VertexType::Free) {
         // This term contributes to the first position.
         // second_type == Fixed.
-        rhs.row(first_pos) = 2 * weight * vertices_updated_.row(second);
+        rhs.row(first_pos) += 2 * weight * vertices_updated_.row(second);
       }
       if (second_type == VertexType::Free) {
         // This term contributes to the second position.
         // first_type == Fixed.
-        rhs.row(second_pos) = 2 * weight * vertices_updated_.row(first);
+        rhs.row(second_pos) += 2 * weight * vertices_updated_.row(first);
       }
       // This term also contributes to the gradient of R_first.
       Eigen::Vector3d b = Eigen::Vector3d::Zero();
@@ -287,13 +293,15 @@ void AdmmFixedSolver::SolveOneIteration() {
       if (second_type == VertexType::Fixed) {
         b -= vertices_updated_.row(second);
       }
-      Eigen::Matrix3d m = -v * b.transpose() * 2 * weight;
-      rhs.block<3, 3>(GetMatrixVariablePos(first, 0), 0) = m;
+      Eigen::Matrix3d m = v * b.transpose() * 2 * weight;
+      rhs.block<3, 3>(GetMatrixVariablePos(first, 0), 0) += m;
     }
   }
   // End of Method 1. ***/
+#endif
 
-  /*** Method 2:
+#ifdef USE_LINEAR_SOLVE_2
+  // Method 2:
   Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num + 3 * vertex_num, 3);
   // f(x) = w||Ax-b||^2:
   // (\sum 2wA'A)x = \sum 2wA'b
@@ -351,6 +359,7 @@ void AdmmFixedSolver::SolveOneIteration() {
     rhs += (rho_ * A.transpose() * B);
   }
   // End of Method 2. ***/
+#endif
   // The two methods have been double checked with each other, it turns out
   // they both give the same rhs! We are free to use either of them (Probably
   // tend to use Method 1 here because it looks shorter).
