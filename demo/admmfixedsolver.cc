@@ -137,10 +137,6 @@ void AdmmFixedSolver::Precompute() {
       // Check the type of first and second.
       VertexType first_type = vertex_info_[first].type;
       VertexType second_type = vertex_info_[second].type;
-      if (first_type == VertexType::Fixed && second_type == VertexType::Fixed) {
-        // Don't need to do anything.
-        continue;
-      }
       // What is p_1 - p_2?
       Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
       // What is the weight?
@@ -165,8 +161,6 @@ void AdmmFixedSolver::Precompute() {
   }
   // Add the rotation constraints.
   for (int v = 0; v < vertex_num; ++v) {
-    // What is the weight?
-    double w = rho_ / 2;
     // What is A?
     Eigen::SparseMatrix<double> A;
     A.resize(3, free_num + 3 * vertex_num);
@@ -174,12 +168,13 @@ void AdmmFixedSolver::Precompute() {
     A.coeffRef(1, GetMatrixVariablePos(v, 1)) = 1;
     A.coeffRef(2, GetMatrixVariablePos(v, 2)) = 1;
     // Add A to M_.
-    M_ = M_ + 2 * w * A.transpose() * A;
+    M_ = M_ + rho_ * A.transpose() * A;
   }
   // End of the second method.
 
   // Post-processing: compress M_, factorize it.
   M_.makeCompressed();
+
   // Cholesky factorization.
   solver_.compute(M_);
   if (solver_.info() != Eigen::Success) {
@@ -265,10 +260,6 @@ void AdmmFixedSolver::SolveOneIteration() {
       // Check the type of first and second.
       VertexType first_type = vertex_info_[first].type;
       VertexType second_type = vertex_info_[second].type;
-      if (first_type == VertexType::Fixed && second_type == VertexType::Fixed) {
-        // Don't need to do anything.
-        continue;
-      }
       // What is p_1 - p_2?
       Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
       // What is the weight?
@@ -290,10 +281,10 @@ void AdmmFixedSolver::SolveOneIteration() {
       // What is the dimension of b?
       Eigen::Vector3d b = Eigen::Vector3d::Zero();
       if (first_type == VertexType::Fixed) {
-        b = -vertices_updated_.row(first);
+        b -= vertices_updated_.row(first);
       }
       if (second_type == VertexType::Fixed) {
-        b = vertices_updated_.row(second);
+        b += vertices_updated_.row(second);
       }
       rhs += 2 * weight * A.transpose() * b.transpose();
     }
@@ -301,8 +292,6 @@ void AdmmFixedSolver::SolveOneIteration() {
 
   // Add the rotation constraints.
   for (int v = 0; v < vertex_num; ++v) {
-    // What is the weight?
-    double w = rho_ / 2;
     // What is A?
     Eigen::SparseMatrix<double> A;
     A.resize(3, free_num + 3 * vertex_num);
@@ -311,7 +300,7 @@ void AdmmFixedSolver::SolveOneIteration() {
     A.coeffRef(2, GetMatrixVariablePos(v, 2)) = 1;
     // What is b?
     Eigen::Matrix3d B = (S_[v] - T_[v]).transpose();
-    rhs += (2 * w * A.transpose() * B);
+    rhs += (rho_ * A.transpose() * B);
   }
   // End of Method 2. ***/
   // The two methods have been double checked with each other, it turns out
@@ -477,30 +466,24 @@ bool AdmmFixedSolver::CheckLinearSolve() const {
   std::vector<Eigen::Matrix3d> R = rotations_;
   double optimal_energy = ComputeLinearSolveEnergy(vertices, R);
   std::cout << "Optimal linear energy: " << optimal_energy << std::endl;
+  std::cout.precision(15);
   int free_num = free_.size();
   int cols = vertices.cols();
-  double delta = 0.02;
+  double delta = 0.001;
   for (int i = 0; i < free_num; ++i) {
     for (int j = 0; j < cols; ++j) {
       int pos = free_(i);
       vertices(pos, j) += delta;
       double perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
-      if (perturbed_enrgy < optimal_energy) {
-        std::cout << "Linear solve check failed!" << std::endl;
-        std::cout << "Optimal energy: " << optimal_energy << std::endl;
-        std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
-        std::cout << "Error occurs in (" << pos << ", " << j << ")" << std::endl;
-        return false;
-      }
+      double product = perturbed_enrgy - optimal_energy;
       // Reset value.
       vertices(pos, j) = vertices_updated_(pos, j);
       // Perturb in another direction.
       vertices(pos, j) -= delta;
       perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
-      if (perturbed_enrgy < optimal_energy) {
+      product *= (perturbed_enrgy - optimal_energy);
+      if (product < 0.0) {
         std::cout << "Linear solve check failed!" << std::endl;
-        std::cout << "Optimal energy: " << optimal_energy << std::endl;
-        std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
         std::cout << "Error occurs in (" << pos << ", " << j << ")" << std::endl;
         return false;
       }
@@ -516,21 +499,21 @@ bool AdmmFixedSolver::CheckLinearSolve() const {
         // Perturb R[v](i, j).
         R[v](i, j) += delta;
         double perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
-        if (perturbed_enrgy < optimal_energy) {
-          std::cout << "Linear solve check failed!" << std::endl;
-          std::cout << "Optimal linear solve energy: " << optimal_energy << std::endl;
-          std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
-          std::cout << "Error occurs in (" << v << ")" << std::endl;
-          return false;
-        }
+        double product = perturbed_enrgy - optimal_energy;
         R[v](i, j) = rotations_[v](i, j);
         R[v](i, j) -= delta;
         perturbed_enrgy = ComputeLinearSolveEnergy(vertices, R);
-        if (perturbed_enrgy < optimal_energy) {
+        product *= (perturbed_enrgy - optimal_energy);
+        if (product < 0.0) {
           std::cout << "Linear solve check failed!" << std::endl;
-          std::cout << "Optimal energy: " << optimal_energy << std::endl;
-          std::cout << "Perturbed energy: " << perturbed_enrgy << std::endl;
-          std::cout << "Error occurs in (" << v << ")" << std::endl;
+          std::cout << "Error occurs in (" << v << ", " << i << ", " << j << ")" << std::endl;
+          // Print out the parabola.
+          std::cout << "Variable\tEnergy\n";
+          for (int step = -10; step < 10; ++step) {
+            R[v](i, j) = rotations_[v](i, j) + step * delta;
+            std::cout << R[v](i, j) << "\t" << ComputeLinearSolveEnergy(vertices, R)
+              << std::endl;
+          }
           return false;
         }
         R[v](i, j) = rotations_[v](i, j);
