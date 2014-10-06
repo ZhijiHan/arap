@@ -8,7 +8,9 @@
 #include "igl/slice.h"
 #include "igl/svd3x3/polar_svd3x3.h"
 
-//#define USE_TEST_FUNCTIONS
+#define USE_TEST_FUNCTIONS
+#define USE_LINEAR_SOLVE_1
+//#define USE_LINEAR_SOLVE_2
 
 namespace arap {
 namespace demo {
@@ -68,8 +70,8 @@ void AdmmFreeSolver::Precompute() {
 
   // Here we have two methods to compute M_. The first one is to compute the
   // gradient directly. Unfortunately this is harder to program and check. So
-  // we comment it out, and keep it here just for reference.
-  /*** Start of the first method: compute the gradient directly.
+#ifdef USE_LINEAR_SOLVE_1
+  // Start of the first method: compute the gradient directly.
   M_.resize(4 * vertex_num, 4 * vertex_num);
   // Loop over all the edges.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
@@ -115,14 +117,14 @@ void AdmmFreeSolver::Precompute() {
     }
   }
   // End of computing the gradient directly. ***/
-
+#endif
   // The second method looks a lot nicer: First let's consider taking the
   // derivatives of f(x) = w||Ax-b||^2:
   // f(x) = w(x'A'-b')(Ax-b) = w(x'A'Ax-2b'Ax+b'b), so
   // \nabla f(x) = w(2A'Ax-2b'A) = (2wA'A)x-2wb'A
   // So we can sum up all these terms to get the normal equation!
   // (\sum 2wA'A)x = \sum 2wA'b
-
+#ifdef USE_LINEAR_SOLVE_2
   // Start of the second method.
   M_.resize(4 * vertex_num, 4 * vertex_num);
   // Loop over all the edges.
@@ -178,6 +180,7 @@ void AdmmFreeSolver::Precompute() {
     M_ = M_ + 2 * w * A.transpose() * A;
   }
   // End of the second method.
+#endif
   // We have compared M_ from both methods, and they're the same!
 
   // Post-processing: compress M_, factorize it.
@@ -233,7 +236,8 @@ void AdmmFreeSolver::SolveOneIteration() {
   // The first vertex_num constraints are for vertex, and the remaining
   // 3 * vertex_num constraints are for matrices.
   // Similarly, we implement two methods and cross check both of them.
-  /*** Method 1: Compute the derivatives directly.
+#ifdef USE_LINEAR_SOLVE_1
+  // Method 1: Compute the derivatives directly.
   Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(4 * vertex_num, 3);
   // Build rhs.
   // For vertex constraints. Since the rhs value for free vertices are 0, we
@@ -247,7 +251,9 @@ void AdmmFreeSolver::SolveOneIteration() {
       = rho_ * (S_[v] - T_[v]).transpose();
   }
   // End of Method 1. ***/
+#endif
 
+#ifdef USE_LINEAR_SOLVE_2
   // Method 2:
   Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(4 * vertex_num, 3);
   // f(x) = w||Ax-b||^2:
@@ -281,6 +287,7 @@ void AdmmFreeSolver::SolveOneIteration() {
     rhs += (2 * w * A.transpose() * b.transpose());
   }
   // End of Method 2. ***/
+#endif
   // The two methods have been double checked with each other, it turns out
   // they both give the same rhs! We are free to use either of them (Probably
   // tend to use Method 1 here because it looks shorter).
