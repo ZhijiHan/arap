@@ -464,6 +464,7 @@ bool AdmmFreeSolver::CheckLinearSolve() const {
   std::vector<Eigen::Matrix3d> R = rotations_;
   double optimal_energy = ComputeLinearSolveEnergy(vertices, R);
   std::cout << "Optimal linear energy: " << optimal_energy << std::endl;
+  std::cout.precision(15);
   int rows = vertices.rows();
   int cols = vertices.cols();
   double delta = 0.001;
