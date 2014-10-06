@@ -8,7 +8,7 @@
 #include "igl/slice.h"
 #include "igl/svd3x3/polar_svd3x3.h"
 
-#define USE_TEST_FUNCTIONS
+//#define USE_TEST_FUNCTIONS
 
 namespace arap {
 namespace demo {
