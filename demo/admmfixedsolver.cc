@@ -23,7 +23,6 @@ AdmmFixedSolver::AdmmFixedSolver(const Eigen::MatrixXd& vertices,
   rho_(rho) {
 }
 
-// TODO
 void AdmmFixedSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
@@ -71,48 +70,65 @@ void AdmmFixedSolver::Precompute() {
   // Here we have two methods to compute M_. The first one is to compute the
   // gradient directly. Unfortunately this is harder to program and check. So
   // we comment it out, and keep it here just for reference.
-  /*** Start of the first method: compute the gradient directly.
-  M_.resize(4 * vertex_num, 4 * vertex_num);
-  // Loop over all the edges.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  for (int j = 0; j < fixed_num; ++j) {
-    int pos = fixed_(j);
-    M_.coeffRef(pos, pos) += rho_;
-  }
-  for (int i = vertex_num; i < 4 * vertex_num; ++i) {
+  // Start of the first method: compute the gradient directly.
+  M_.resize(free_num + 3 * vertex_num, free_num + 3 * vertex_num);
+  for (int i = free_num; i < free_num + 3 * vertex_num; ++i) {
     M_.coeffRef(i, i) += rho_;
   }
+  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   for (int f = 0; f < face_num; ++f) {
     // Loop over all the edges.
     for (int e = 0; e < 3; ++e) {
       int first = faces_(f, edge_map[e][0]);
       int second = faces_(f, edge_map[e][1]);
       // Each edge is visited twice: i->j and j->i.
-      // We treat first as 'i' in our constraints.
-      // The i-th constraints are in the i-th and vertex_num + 3 * i :
-      // vertex_num + 3 * i + 2 row in M_.
+      VertexType first_type = vertex_info_[first].type;
+      VertexType second_type = vertex_info_[second].type;
+      int first_pos = vertex_info_[first].pos;
+      int second_pos = vertex_info_[second].pos;
       double weight = weight_.coeff(first, second);
-      M_.coeffRef(first, first) +=  2 * weight;
-      M_.coeffRef(first, second) -= 2 * weight;
-      M_.coeffRef(second, first) -= 2 * weight;
-      M_.coeffRef(second, second) += 2 * weight;
       Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
-      for (int i = 0; i < 3; ++i) {
-        M_.coeffRef(first, vertex_num + 3 * first + i) -= 2 * weight * v(i);
-        M_.coeffRef(second, vertex_num + 3 * first + i) += 2 * weight * v(i);
+      if (first_type == VertexType::Free) {
+        // This term contributes to the gradient of first.
+        M_.coeffRef(first_pos, first_pos) += 2 * weight;
+        if (second_type == VertexType::Free) {
+          M_.coeffRef(first_pos, second_pos) -= 2 * weight;
+        }
+        for (int i = 0; i < 3; ++i) {
+          M_.coeffRef(first_pos, GetMatrixVariablePos(first, i))
+            -= 2 * weight * v(i);
+        }
       }
-      // Rotation constraints.
+      if (second_type == VertexType::Free) {
+        // This term contributes to the gradient of second.
+        M_.coeffRef(second_pos, second_pos) += 2 * weight;
+        if (first_type == VertexType::Free) {
+          M_.coeffRef(second_pos, first_pos) -= 2 * weight;
+        }
+        for (int i = 0; i < 3; ++i) {
+          M_.coeffRef(second_pos, GetMatrixVariablePos(first, i))
+            += 2 * weight * v(i);
+        }
+      }
+      // This term also contributes to R_first.
       Eigen::Matrix3d m = v * v.transpose() * weight * 2;
       for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-          M_.coeffRef(vertex_num + 3 * first + i, vertex_num + 3 * first + j)
+          M_.coeffRef(free_num + 3 * first + i, free_num + 3 * first + j)
             += m(i, j);
         }
       }
-      for (int i = 0; i < 3; ++i) {
-        double val = weight * 2 * v(i);
-        M_.coeffRef(vertex_num + 3 * first + i, first) -= val;
-        M_.coeffRef(vertex_num + 3 * first + i, second) += val;
+      if (first_type == VertexType::Free) {
+        for (int i = 0; i < 3; ++i) {
+          double val = weight * 2 * v(i);
+          M_.coeffRef(GetMatrixVariablePos(first, i), first_pos) -= val;
+        }
+      }
+      if (second_type == VertexType::Free) {
+        for (int i = 0; i < 3; ++i) {
+          double val = weight * 2 * v(i);
+          M_.coeffRef(GetMatrixVariablePos(first, i), second_pos) += val;
+        }
       }
     }
   }
@@ -125,7 +141,7 @@ void AdmmFixedSolver::Precompute() {
   // So we can sum up all these terms to get the normal equation!
   // (\sum 2wA'A)x = \sum 2wA'b
 
-  // Start of the second method.
+  /*** Start of the second method.
   M_.resize(free_num + 3 * vertex_num, free_num + 3 * vertex_num);
   // Loop over all the edges.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
@@ -170,7 +186,7 @@ void AdmmFixedSolver::Precompute() {
     // Add A to M_.
     M_ = M_ + rho_ * A.transpose() * A;
   }
-  // End of the second method.
+  // End of the second method. ***/
 
   // Post-processing: compress M_, factorize it.
   M_.makeCompressed();
@@ -212,7 +228,6 @@ void AdmmFixedSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   T_.resize(vertex_num, Eigen::Matrix3d::Zero());
 }
 
-// TODO
 void AdmmFixedSolver::SolveOneIteration() {
   int fixed_num = fixed_.size();
   int free_num = free_.size();
@@ -226,26 +241,59 @@ void AdmmFixedSolver::SolveOneIteration() {
 
   // Step 1: linear solve.
   // Note that the problem can be decomposed in three dimensions.
-  // The number of constraints are 4 * vertex_num.
-  // The first vertex_num constraints are for vertex, and the remaining
+  // The number of constraints are free_num + 3 * vertex_num.
+  // The first free_num constraints are for vertex, and the remaining
   // 3 * vertex_num constraints are for matrices.
   // Similarly, we implement two methods and cross check both of them.
-  /*** Method 1: Compute the derivatives directly.
-  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(4 * vertex_num, 3);
+  // Method 1: Compute the derivatives directly.
+  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num + 3 * vertex_num, 3);
   // Build rhs.
-  // For vertex constraints. Since the rhs value for free vertices are 0, we
-  // only consider fixed vertices.
-  for (int j = 0; j < fixed_num; ++j) {
-    rhs.row(fixed_(j)) = rho_ * (fixed_vertices_.row(j) - u_.row(j));
-  }
   // For rotation matrix constraints.
   for (int v = 0; v < vertex_num; ++v) {
-    rhs.block<3, 3>(vertex_num + 3 * v, 0)
+    rhs.block<3, 3>(free_num + 3 * v, 0)
       = rho_ * (S_[v] - T_[v]).transpose();
+  }
+  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
+  for (int f = 0; f < face_num; ++f) {
+    // Loop over all the edges.
+    for (int e = 0; e < 3; ++e) {
+      int first = faces_(f, edge_map[e][0]);
+      int second = faces_(f, edge_map[e][1]);
+      // Each edge is visited twice: i->j and j->i.
+      VertexType first_type = vertex_info_[first].type;
+      VertexType second_type = vertex_info_[second].type;
+      int first_pos = vertex_info_[first].pos;
+      int second_pos = vertex_info_[second].pos;
+      double weight = weight_.coeff(first, second);
+      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
+      if (first_type == VertexType::Free && second_type == VertexType::Free) {
+        continue;
+      }
+      if (first_type == VertexType::Free) {
+        // This term contributes to the first position.
+        // second_type == Fixed.
+        rhs.row(first_pos) = 2 * weight * vertices_updated_.row(second);
+      }
+      if (second_type == VertexType::Free) {
+        // This term contributes to the second position.
+        // first_type == Fixed.
+        rhs.row(second_pos) = 2 * weight * vertices_updated_.row(first);
+      }
+      // This term also contributes to the gradient of R_first.
+      Eigen::Vector3d b = Eigen::Vector3d::Zero();
+      if (first_type == VertexType::Fixed) {
+        b += vertices_updated_.row(first);
+      }
+      if (second_type == VertexType::Fixed) {
+        b -= vertices_updated_.row(second);
+      }
+      Eigen::Matrix3d m = -v * b.transpose() * 2 * weight;
+      rhs.block<3, 3>(GetMatrixVariablePos(first, 0), 0) = m;
+    }
   }
   // End of Method 1. ***/
 
-  // Method 2:
+  /*** Method 2:
   Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num + 3 * vertex_num, 3);
   // f(x) = w||Ax-b||^2:
   // (\sum 2wA'A)x = \sum 2wA'b
