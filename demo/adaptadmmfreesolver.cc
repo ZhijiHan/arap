@@ -15,8 +15,11 @@
 namespace arap {
 namespace demo {
 
-const double kMatrixDiffThreshold = 1e-6;
+const double kDecreTau = 2;
+const double kIncreTau = 2;
+const double kMu = 10;
 const double kEnergyTolerance = 0.02;
+const double kMatrixDiffThreshold = 1e-6;
 
 AdaptAdmmFreeSolver::AdaptAdmmFreeSolver(const Eigen::MatrixXd& vertices,
     const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
@@ -185,10 +188,13 @@ void AdaptAdmmFreeSolver::SolveOneIteration() {
   Eigen::SparseMatrix<double> M_adapt_ = M_;
 
   // The iteration contains four steps:
-  // Step 1: linear solve.
-  // Step 2: SVD solve.
-  // Step 3: update u.
-  // Step 4: update T.
+  // Step 1: use rhok+1 to compute Rk+1 and pk+1.
+  // Step 2: use rhok+1 to compute Sk+1.
+  // Step 3: use pk+1 to update uk+1.
+  // Step 4: Use Rk+1 and Sk+1 to compute Tk+1.
+  // Step 5: Use Rk+1 and Sk+1 to compute primal dual rk+1.
+  // Step 6: Use rhok+1, Sk+1 and Sk to compute sk+1.
+  // Step 7: Use rk+1 and sk+1 to compute rhok+2.
 
   // Step 1: linear solve.
   // Note that the problem can be decomposed in three dimensions.
@@ -370,6 +376,20 @@ void AdaptAdmmFreeSolver::SolveOneIteration() {
   for (int i = 0; i < vertex_num; ++i) {
     T_[i] += rotations_[i] - S_[i];
   }
+
+  // Step 5: Use Rk+1 and Sk+1 to compute primal residual rk+1.
+  double primal_residual = ComputePrimalResidual();
+
+  // Step 6: Use rhok+1, Sk+1 and Sk to compute sk+1.
+  double dual_residual = ComputeDualResidual();
+
+  // Step 7: Use rk+1 and sk+1 to compute rhok+2.
+  if (primal_residual > dual_residual * kMu * kMu) {
+    rho_ *= kIncreTau;
+  } else if (dual_residual > primal_residual * kMu * kMu) {
+    rho_ /= kDecreTau;
+  }
+  std::cout << "rho = " << rho_ << std::endl;
 }
 
 Eigen::Vector3d AdaptAdmmFreeSolver::ComputeCotangent(int face_id) const {
