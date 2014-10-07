@@ -15,8 +15,11 @@
 namespace arap {
 namespace demo {
 
-const double kMatrixDiffThreshold = 1e-6;
+const double kDecreTau = 2;
+const double kIncreTau = 2;
+const double kMu = 10;
 const double kEnergyTolerance = 0.02;
+const double kMatrixDiffThreshold = 1e-6;
 
 AdaptAdmmFixedSolver::AdaptAdmmFixedSolver(const Eigen::MatrixXd& vertices,
     const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
@@ -222,9 +225,12 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
   Eigen::SparseMatrix<double> M_adapt_ = M_;
 
   // The iteration contains four steps:
-  // Step 1: linear solve.
-  // Step 2: SVD solve.
-  // Step 3: update T.
+  // Step 1: use rhok+1 to compute Rk+1 and pk+1.
+  // Step 2: use rhok+1 to compute Sk+1.
+  // Step 3: Use Rk+1 and Sk+1 to compute Tk+1.
+  // Step 4: Use Rk+1 and Sk+1 to compute primal dual rk+1.
+  // Step 5: Use rhok+1, Sk+1 and Sk to compute sk+1.
+  // Step 6: Use rk+1 and sk+1 to compute rhok+2.
 
   // Step 1: linear solve.
   // Note that the problem can be decomposed in three dimensions.
@@ -416,10 +422,14 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
   // The problem is (for reference):
   // \min_{S} \|S - (R + T)\|^2 s.t. S\in SO(3)
   // i.e., given R + T, find the closest SO(3) matrix.
+  // During this step, we also copy the old S_ into S_pre_ to help compute dual
+  // residual.
+  S_pre_.clear();
   for (int i = 0; i < vertex_num; ++i) {
     Eigen::Matrix3d rotation;
     Eigen::Matrix3d res = rotations_[i] + T_[i];
     igl::polar_svd3x3(res, rotation);
+    S_pre_.push_back(S_[i]);
     S_[i] = rotation;
   }
 #ifdef USE_TEST_FUNCTIONS
@@ -439,6 +449,20 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
   for (int i = 0; i < vertex_num; ++i) {
     T_[i] += rotations_[i] - S_[i];
   }
+
+  // Step 4: Use Rk+1 and Sk+1 to compute primal residual rk+1.
+  double primal_residual = ComputePrimalResidual();
+
+  // Step 5: Use rhok+1, Sk+1 and Sk to compute sk+1.
+  double dual_residual = ComputeDualResidual();
+
+  // Step 6: Use rk+1 and sk+1 to compute rhok+2.
+  if (primal_residual > dual_residual * kMu * kMu) {
+    rho_ *= kIncreTau;
+  } else if (dual_residual > primal_residual * kMu * kMu) {
+    rho_ /= kDecreTau;
+  }
+  std::cout << "rho = " << rho_ << std::endl;
 }
 
 Eigen::Vector3d AdaptAdmmFixedSolver::ComputeCotangent(int face_id) const {
