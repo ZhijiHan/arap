@@ -72,12 +72,11 @@ void AdaptAdmmFixedSolver::Precompute() {
   // Here we have two methods to compute M_. The first one is to compute the
   // gradient directly. Unfortunately this is harder to program and check. So
   // we comment it out, and keep it here just for reference.
+  // Since we use adaptive methods to compute rho, it does not make sense to
+  // pre factor the matrix.
 #ifdef USE_LINEAR_SOLVE_1
   // Start of the first method: compute the gradient directly.
   M_.resize(free_num + 3 * vertex_num, free_num + 3 * vertex_num);
-  for (int i = free_num; i < free_num + 3 * vertex_num; ++i) {
-    M_.coeffRef(i, i) += rho_;
-  }
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   for (int f = 0; f < face_num; ++f) {
     // Loop over all the edges.
@@ -180,29 +179,9 @@ void AdaptAdmmFixedSolver::Precompute() {
       M_ = M_ + 2 * weight * A.transpose() * A;
     }
   }
-  // Add the rotation constraints.
-  for (int v = 0; v < vertex_num; ++v) {
-    // What is A?
-    Eigen::SparseMatrix<double> A;
-    A.resize(3, free_num + 3 * vertex_num);
-    A.coeffRef(0, GetMatrixVariablePos(v, 0)) = 1;
-    A.coeffRef(1, GetMatrixVariablePos(v, 1)) = 1;
-    A.coeffRef(2, GetMatrixVariablePos(v, 2)) = 1;
-    // Add A to M_.
-    M_ = M_ + rho_ * A.transpose() * A;
-  }
   // End of the second method. ***/
 #endif
-  // Post-processing: compress M_, factorize it.
   M_.makeCompressed();
-
-  // Cholesky factorization.
-  solver_.compute(M_);
-  if (solver_.info() != Eigen::Success) {
-    // Failed to decompose M_.
-    std::cout << "Fail to do Cholesky factorization." << std::endl;
-    exit(EXIT_FAILURE);
-  }
 }
 
 void AdaptAdmmFixedSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
@@ -238,6 +217,9 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
   int free_num = free_.size();
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
+  // Sparse linear solver. Use Cholmod from SuiteSparse.
+  Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
+  Eigen::SparseMatrix<double> M_adapt_ = M_;
 
   // The iteration contains four steps:
   // Step 1: linear solve.
@@ -296,6 +278,10 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
       Eigen::Matrix3d m = v * b.transpose() * 2 * weight;
       rhs.block<3, 3>(GetMatrixVariablePos(first, 0), 0) += m;
     }
+  }
+  // Since we are using adaptive rho, we need to update M_adapt_.
+  for (int i = free_num; i < free_num + 3 * vertex_num; ++i) {
+    M_adapt_.coeffRef(i, i) += rho_;
   }
   // End of Method 1. ***/
 #endif
@@ -358,6 +344,17 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
     Eigen::Matrix3d B = (S_[v] - T_[v]).transpose();
     rhs += (rho_ * A.transpose() * B);
   }
+  // Similarly, since we change rho, we need to modify M_.
+  for (int v = 0; v < vertex_num; ++v) {
+    // What is A?
+    Eigen::SparseMatrix<double> A;
+    A.resize(3, free_num + 3 * vertex_num);
+    A.coeffRef(0, GetMatrixVariablePos(v, 0)) = 1;
+    A.coeffRef(1, GetMatrixVariablePos(v, 1)) = 1;
+    A.coeffRef(2, GetMatrixVariablePos(v, 2)) = 1;
+    // Add A to M_.
+    M_adapt_ = M_adapt_ + rho_ * A.transpose() * A;
+  }
   // End of Method 2. ***/
 #endif
   // The two methods have been double checked with each other, it turns out
@@ -365,6 +362,14 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
   // tend to use Method 1 here because it looks shorter).
 
   // Solve.
+  M_adapt_.makeCompressed();
+  // LU factorization.
+  solver_.compute(M_adapt_);
+  if (solver_.info() != Eigen::Success) {
+    // Failed to decompose M_adapt_.
+    std::cout << "Fail to do LU factorization." << std::endl;
+    exit(EXIT_FAILURE);
+  }
   Eigen::MatrixXd solution = solver_.solve(rhs);
   if (solver_.info() != Eigen::Success) {
     std::cout << "Fail to solve the sparse linear system." << std::endl;
@@ -377,7 +382,7 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
     exit(EXIT_FAILURE);
   }
   // Sanity check the value of the solution.
-  if ((M_ * solution - rhs).squaredNorm() > kMatrixDiffThreshold) {
+  if ((M_adapt_ * solution - rhs).squaredNorm() > kMatrixDiffThreshold) {
     std::cout << "Sparse linear solver is wrong!" << std::endl;
     exit(EXIT_FAILURE);
   }
