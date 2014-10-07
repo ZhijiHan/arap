@@ -1,3 +1,4 @@
+#include "adaptadmmfixedsolver.h"
 #include "admmfixedsolver.h"
 #include "admmfreesolver.h"
 #include "arapsolver.h"
@@ -166,6 +167,11 @@ int main(int argc, char *argv[]) {
     double rho = atof(argv[6]);
     std::cout << "rho = " << rho << std::endl;
     solver = new arap::demo::AdmmFreeSolver(V, F, b, iter_num, rho);
+  } else if (algorithm == "adapt-admm-fixed") {
+    std::cout << "Use AdaptAdmmFixedSolver." << std::endl;
+    double rho = atof(argv[6]);
+    std::cout << "rho = " << rho << std::endl;
+    solver = new arap::demo::AdaptAdmmFixedSolver(V, F, b, iter_num, rho);
   }
 
   solver->Precompute();
