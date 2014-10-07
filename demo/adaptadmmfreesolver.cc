@@ -1,4 +1,4 @@
-#include "admmfreesolver.h"
+#include "adaptadmmfreesolver.h"
 
 // C++ standard library
 #include <iostream>
@@ -18,14 +18,14 @@ namespace demo {
 const double kMatrixDiffThreshold = 1e-6;
 const double kEnergyTolerance = 0.02;
 
-AdmmFreeSolver::AdmmFreeSolver(const Eigen::MatrixXd& vertices,
+AdaptAdmmFreeSolver::AdaptAdmmFreeSolver(const Eigen::MatrixXd& vertices,
     const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
     int max_iteration, double rho)
   : Solver(vertices, faces, fixed, max_iteration),
   rho_(rho) {
 }
 
-void AdmmFreeSolver::Precompute() {
+void AdaptAdmmFreeSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
   int fixed_num = fixed_.size();
@@ -75,13 +75,6 @@ void AdmmFreeSolver::Precompute() {
   M_.resize(4 * vertex_num, 4 * vertex_num);
   // Loop over all the edges.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  for (int j = 0; j < fixed_num; ++j) {
-    int pos = fixed_(j);
-    M_.coeffRef(pos, pos) += rho_;
-  }
-  for (int i = vertex_num; i < 4 * vertex_num; ++i) {
-    M_.coeffRef(i, i) += rho_;
-  }
   for (int f = 0; f < face_num; ++f) {
     // Loop over all the edges.
     for (int e = 0; e < 3; ++e) {
@@ -153,48 +146,12 @@ void AdmmFreeSolver::Precompute() {
       // What is b? b is zero!
     }
   }
-  // Add the rotation constraints.
-  for (int v = 0; v < vertex_num; ++v) {
-    // What is the weight?
-    double w = rho_ / 2;
-    // What is A?
-    Eigen::SparseMatrix<double> A;
-    A.resize(3, 4 * vertex_num);
-    A.coeffRef(0, GetMatrixVariablePos(vertex_num, v, 0)) = 1;
-    A.coeffRef(1, GetMatrixVariablePos(vertex_num, v, 1)) = 1;
-    A.coeffRef(2, GetMatrixVariablePos(vertex_num, v, 2)) = 1;
-    // Add A to M_.
-    M_ = M_ + 2 * w * A.transpose() * A;
-  }
-  // Add constraints for fixed vertices.
-  for (int i = 0; i < fixed_num; ++i) {
-    // What is th position of this fixed vertex?
-    int pos = fixed_(i);
-    // What is the weight w?
-    double w = rho_ / 2;
-    // What is A?
-    Eigen::SparseMatrix<double> A;
-    A.resize(1, 4 * vertex_num);
-    A.coeffRef(0, pos) = 1;
-    // Add A to M_.
-    M_ = M_ + 2 * w * A.transpose() * A;
-  }
   // End of the second method.
 #endif
-  // We have compared M_ from both methods, and they're the same!
-
-  // Post-processing: compress M_, factorize it.
   M_.makeCompressed();
-  // Cholesky factorization.
-  solver_.compute(M_);
-  if (solver_.info() != Eigen::Success) {
-    // Failed to decompose M_.
-    std::cout << "Fail to do Cholesky factorization." << std::endl;
-    exit(EXIT_FAILURE);
-  }
 }
 
-void AdmmFreeSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
+void AdaptAdmmFreeSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   // Cache fixed_vertices.
   fixed_vertices_ = fixed_vertices;
   // Check the dimension is correct.
@@ -219,10 +176,13 @@ void AdmmFreeSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   u_ = Eigen::MatrixXd::Zero(fixed_num, 3);
 }
 
-void AdmmFreeSolver::SolveOneIteration() {
+void AdaptAdmmFreeSolver::SolveOneIteration() {
   int fixed_num = fixed_.size();
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
+  // Sparse linear solver. Use Cholmod from SuiteSparse.
+  Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
+  Eigen::SparseMatrix<double> M_adapt_ = M_;
 
   // The iteration contains four steps:
   // Step 1: linear solve.
@@ -249,6 +209,14 @@ void AdmmFreeSolver::SolveOneIteration() {
   for (int v = 0; v < vertex_num; ++v) {
     rhs.block<3, 3>(vertex_num + 3 * v, 0)
       = rho_ * (S_[v] - T_[v]).transpose();
+  }
+  // Update M_.
+  for (int j = 0; j < fixed_num; ++j) {
+    int pos = fixed_(j);
+    M_adapt_.coeffRef(pos, pos) += rho_;
+  }
+  for (int i = vertex_num; i < 4 * vertex_num; ++i) {
+    M_adapt_.coeffRef(i, i) += rho_;
   }
   // End of Method 1. ***/
 #endif
@@ -286,13 +254,48 @@ void AdmmFreeSolver::SolveOneIteration() {
     Eigen::Vector3d b = fixed_vertices_.row(i) - u_.row(i);
     rhs += (2 * w * A.transpose() * b.transpose());
   }
+  // Update M_.
+  // Add the rotation constraints.
+  for (int v = 0; v < vertex_num; ++v) {
+    // What is the weight?
+    double w = rho_ / 2;
+    // What is A?
+    Eigen::SparseMatrix<double> A;
+    A.resize(3, 4 * vertex_num);
+    A.coeffRef(0, GetMatrixVariablePos(vertex_num, v, 0)) = 1;
+    A.coeffRef(1, GetMatrixVariablePos(vertex_num, v, 1)) = 1;
+    A.coeffRef(2, GetMatrixVariablePos(vertex_num, v, 2)) = 1;
+    // Add A to M_.
+    M_adapt_ = M_adapt_ + 2 * w * A.transpose() * A;
+  }
+  // Add constraints for fixed vertices.
+  for (int i = 0; i < fixed_num; ++i) {
+    // What is th position of this fixed vertex?
+    int pos = fixed_(i);
+    // What is the weight w?
+    double w = rho_ / 2;
+    // What is A?
+    Eigen::SparseMatrix<double> A;
+    A.resize(1, 4 * vertex_num);
+    A.coeffRef(0, pos) = 1;
+    // Add A to M_.
+    M_adapt_ = M_adapt_ + 2 * w * A.transpose() * A;
+  }
   // End of Method 2. ***/
 #endif
+  M_adapt_.makeCompressed();
   // The two methods have been double checked with each other, it turns out
   // they both give the same rhs! We are free to use either of them (Probably
   // tend to use Method 1 here because it looks shorter).
 
   // Solve.
+  // LU factorization.
+  solver_.compute(M_adapt_);
+  if (solver_.info() != Eigen::Success) {
+    // Failed to decompose M_.
+    std::cout << "Fail to do Cholesky factorization." << std::endl;
+    exit(EXIT_FAILURE);
+  }
   Eigen::MatrixXd solution = solver_.solve(rhs);
   if (solver_.info() != Eigen::Success) {
     std::cout << "Fail to solve the sparse linear system." << std::endl;
@@ -305,7 +308,7 @@ void AdmmFreeSolver::SolveOneIteration() {
     exit(EXIT_FAILURE);
   }
   // Sanity check the value of the solution.
-  if ((M_ * solution - rhs).squaredNorm() > kMatrixDiffThreshold) {
+  if ((M_adapt_ * solution - rhs).squaredNorm() > kMatrixDiffThreshold) {
     std::cout << "Sparse linear solver is wrong!" << std::endl;
     exit(EXIT_FAILURE);
   }
@@ -337,10 +340,12 @@ void AdmmFreeSolver::SolveOneIteration() {
   // The problem is (for reference):
   // \min_{S} \|S - (R + T)\|^2 s.t. S\in SO(3)
   // i.e., given R + T, find the closest SO(3) matrix.
+  S_pre_.clear();
   for (int i = 0; i < vertex_num; ++i) {
     Eigen::Matrix3d rotation;
     Eigen::Matrix3d res = rotations_[i] + T_[i];
     igl::polar_svd3x3(res, rotation);
+    S_pre_.push_back(S_[i]);
     S_[i] = rotation;
   }
 #ifdef USE_TEST_FUNCTIONS
@@ -367,7 +372,7 @@ void AdmmFreeSolver::SolveOneIteration() {
   }
 }
 
-Eigen::Vector3d AdmmFreeSolver::ComputeCotangent(int face_id) const {
+Eigen::Vector3d AdaptAdmmFreeSolver::ComputeCotangent(int face_id) const {
   Eigen::Vector3d cotangent(0.0, 0.0, 0.0);
   // The triangle is defined as follows:
   //            A
@@ -398,7 +403,7 @@ Eigen::Vector3d AdmmFreeSolver::ComputeCotangent(int face_id) const {
   return cotangent;
 }
 
-Energy AdmmFreeSolver::ComputeEnergy() const {
+Energy AdaptAdmmFreeSolver::ComputeEnergy() const {
   // Compute the energy.
   Energy energy;
   // In order to do early return, let's first test all the S_ matrices to see
@@ -457,7 +462,7 @@ Energy AdmmFreeSolver::ComputeEnergy() const {
   return energy;
 }
 
-bool AdmmFreeSolver::CheckLinearSolve() const {
+bool AdaptAdmmFreeSolver::CheckLinearSolve() const {
   // Compute the linear solve energy.
   // Don't pollute the solution! Play with a copy instead.
   Eigen::MatrixXd vertices = vertices_updated_;
@@ -522,7 +527,7 @@ bool AdmmFreeSolver::CheckLinearSolve() const {
   return true;
 }
 
-double AdmmFreeSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
+double AdaptAdmmFreeSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
     const std::vector<Eigen::Matrix3d> &rotations) const {
   // Compute the linear solve energy.
   double energy = 0.0;
@@ -560,7 +565,7 @@ double AdmmFreeSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
 }
 
 // Compute the SVD solve energy. Used in CheckSVDSolve.
-double AdmmFreeSolver::ComputeSVDSolveEnergy() const {
+double AdaptAdmmFreeSolver::ComputeSVDSolveEnergy() const {
   double infty = std::numeric_limits<double>::infinity();
   int vertex_num = vertices_.rows();
   for (int v = 0; v < vertex_num; ++v) {
@@ -577,7 +582,7 @@ double AdmmFreeSolver::ComputeSVDSolveEnergy() const {
 }
 
 // Check whether a matrix is in SO(3).
-bool AdmmFreeSolver::IsSO3(const Eigen::Matrix3d &S) const {
+bool AdaptAdmmFreeSolver::IsSO3(const Eigen::Matrix3d &S) const {
   double det = S.determinant();
   if ((S * S.transpose() - Eigen::Matrix3d::Identity()).squaredNorm()
       > kMatrixDiffThreshold || abs(det - 1) > kMatrixDiffThreshold) {
@@ -586,6 +591,39 @@ bool AdmmFreeSolver::IsSO3(const Eigen::Matrix3d &S) const {
     return false;
   }
   return true;
+}
+
+// Compute the primal residual.
+double AdaptAdmmFreeSolver::ComputePrimalResidual() const {
+  double residual = 0.0;
+  int vertex_num = vertices_.rows();
+  for (int v = 0; v < vertex_num; ++v) {
+    residual += (rotations_[v] - S_[v]).squaredNorm();
+  }
+  int fixed_num = fixed_.size();
+  for (int i = 0; i < fixed_num; ++i) {
+    int pos = fixed_(i);
+    residual +=
+      (vertices_updated_.row(pos) - fixed_vertices_.row(i)).squaredNorm();
+  }
+  return residual;
+}
+
+// Compute dual residual.
+double AdaptAdmmFreeSolver::ComputeDualResidual() const {
+  // By definition the dual residual equals to rho times the squared norm of
+  // the difference between S_ and S_pre_.
+  // The definition of dual residual:
+  // s = \rho * A'B(z^k+1-z^k)
+  // Note that A' = I, B = -I, and we only care about the norm (so that we can
+  // ignore the sign), ||s||^2 = \rho * ||z^k+1-z^k||^2
+  double residual = 0.0;
+  int vertex_num = vertices_.rows();
+  for (int v = 0; v < vertex_num; ++v) {
+    residual += (S_pre_[v] - S_[v]).squaredNorm();
+  }
+  residual *= rho_;
+  return residual;
 }
 
 }  // namespace demo
