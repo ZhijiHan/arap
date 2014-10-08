@@ -6,33 +6,33 @@ namespace arap {
 namespace gen {
 
 // Generate files for dino model.
-void ModelGenerator::GenerateDino(
-    const char* off_file_name, const char* dmat_file_name) {
-  std::cout << "Generate dino." << std::endl;
+void ModelGenerator::GenerateDino(const char* off_file, const char* vertex_tag,
+    const char* vertex_file) {
+  std::cout << "Dino." << std::endl;
 }
 
 // Generate files for spiky plane model.
-void ModelGenerator::GenerateSpikyPlane(
-    const char* off_file_name, const char* dmat_file_name) {
-  std::cout << "Generate spiky plane." << std::endl;
+void ModelGenerator::GenerateSpikyPlane(const char* off_file,
+    const char* vertex_tag, const char* vertex_file) {
+  std::cout << "Spiky plane." << std::endl;
 }
 
 // Generate files for twist bar model.
-void ModelGenerator::GenerateTwistBar(
-    const char* off_file_name, const char* dmat_file_name) {
-  std::cout << "Generate twist bar." << std::endl;
+void ModelGenerator::GenerateTwistBar(const char* off_file,
+    const char* vertex_tag, const char* vertex_file) {
+  std::cout << "Twist bar." << std::endl;
 }
 
 // Generate files for armadillo model.
-void ModelGenerator::GenerateArmadillo(
-    const char* off_file_name, const char* dmat_file_name) {
-  std::cout << "Generate armadillo." << std::endl;
+void ModelGenerator::GenerateArmadillo(const char* off_file,
+    const char* vertex_tag, const char* vertex_file) {
+  std::cout << "Armadillo." << std::endl;
 }
 
 // Generate files for Stanford Bunny.
-void ModelGenerator::GenerateBunny(
-    const char* off_file_name, const char* dmat_file_name) {
-  std::cout << "Generate bunny." << std::endl;
+void ModelGenerator::GenerateBunny(const char* off_file,
+    const char* vertex_tag, const char* vertex_file) {
+  std::cout << "Bunny." << std::endl;
 }
 
 }  // namespace gen

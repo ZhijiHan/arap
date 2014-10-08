@@ -7,21 +7,24 @@ namespace gen {
 class ModelGenerator {
  public:
   // Generate files for dino model.
-  void GenerateDino(const char* off_file_name, const char* dmat_file_name);
+  void GenerateDino(const char* off_file, const char* vertex_tag,
+      const char* vertex_file);
 
   // Generate files for spiky plane model.
-  void GenerateSpikyPlane(
-      const char* off_file_name, const char* dmat_file_name);
+  void GenerateSpikyPlane(const char* off_file, const char* vertex_tag,
+      const char* vertex_file);
 
   // Generate files for twist bar model.
-  void GenerateTwistBar(const char* off_file_name, const char* dmat_file_name);
+  void GenerateTwistBar(const char* off_file, const char* vertex_tag,
+      const char* vertex_file);
 
   // Generate files for armadillo model.
-  void GenerateArmadillo(
-      const char* off_file_name, const char* dmat_file_name);
+  void GenerateArmadillo(const char* off_file, const char* vertex_tag,
+      const char* vertex_file);
 
   // Generate files for Stanford Bunny.
-  void GenerateBunny(const char* off_file_name, const char* dmat_file_name);
+  void GenerateBunny(const char* off_file, const char* vertex_tag,
+      const char* vertex_file);
 
  private:
 };
