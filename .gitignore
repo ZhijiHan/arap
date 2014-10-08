@@ -8,5 +8,8 @@ demo/build/*
 # Temporary files.
 *~
 
+# Executive file.
+model_gen
+
 # Model folders and files.
 model/*
