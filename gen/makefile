@@ -10,4 +10,4 @@ modelgenerator.o: modelgenerator.cc
 	g++ -c modelgenerator.cc
 
 clean:
-	rm -rf *o model_gen
+	rm -rf *o *.off *.dmat model_gen
