@@ -13,3 +13,5 @@ model_gen
 
 # Model folders and files.
 model/*
+*.dmat
+*.off
