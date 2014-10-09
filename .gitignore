@@ -10,3 +10,6 @@ demo/build/*
 
 # Model folders and files.
 model/*
+
+# Folders from other branches.
+gen/*
