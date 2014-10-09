@@ -39,7 +39,6 @@ Eigen::MatrixXd C;
 // S is the same as the # of vertices. b contains the indices of those vertices
 // whose S is nonnegative.
 Eigen::VectorXi S, b;
-Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
 // Our own implementation of ARAP.
@@ -52,40 +51,6 @@ static const Eigen::RowVector3d kPurple(80.0 / 255.0,
 static const Eigen::RowVector3d kGold(255.0 / 255.0,
                                       228.0 / 255.0,
                                       58.0 / 255.0);
-// Error threshold.
-static const double kErrorPerVertexCoord = 1e-8;
-
-// Given |frame_number|, compute the fixed vertices and return.
-Eigen::MatrixXd ComputeFixedVertices(int frame_number) {
-  anim_t = anim_t_dir * frame_number;
-  Eigen::MatrixXd bc(b.size(), V.cols());
-  for(int i = 0; i < b.size(); ++i) {
-    bc.row(i) = V.row(b(i));
-    switch (S(b(i))) {
-      case 0: {
-        const double r = mid(0) * 0.25;
-        bc(i, 0) += r * sin(0.5 * anim_t * 2. * igl::PI);
-        bc(i, 1) -= r + r * cos(igl::PI + 0.5 * anim_t * 2. * igl::PI);
-        break;
-      }
-      case 1: {
-        const double r = mid(1) * 0.15;
-        bc(i, 1) += r + r * cos(igl::PI + 0.15 * anim_t * 2. * igl::PI);
-        bc(i, 2) -= r * sin(0.15 * anim_t * 2. * igl::PI);
-        break;
-      }
-      case 2: {
-        const double r = mid(1) * 0.15;
-        bc(i, 2) += r + r * cos(igl::PI + 0.35 * anim_t * 2. * igl::PI);
-        bc(i, 0) += r * sin(0.35 * anim_t * 2. * igl::PI);
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  return bc;
-}
 
 bool pre_draw(igl::Viewer& viewer) {
   static int iteration = 0;
@@ -113,13 +78,13 @@ bool key_down(igl::Viewer& viewer, unsigned char key, int mods) {
   }
 }
 
-// Usage: ./demo_bin [.off file name] [.dmat file name] [frame number]
+// Usage: ./demo_bin [.off file name] [.dmat file name] [.dmat file name]
 // [algorithm name] [iteration number] [rho]
 int main(int argc, char *argv[]) {
   if (argc < 6) {
     std::cout << "Not enough input parameters." << std::endl
               << "Usage: demo_bin [.off file name] [.dmat file name] "
-                 "[frame number] [algorithm name] [iteration number] "
+                 "[.dmat file name] [algorithm name] [iteration number] "
                  "[rho]" << std::endl;
     return 0;
   }
@@ -146,11 +111,8 @@ int main(int argc, char *argv[]) {
   // b = 0 1 2 4 6
   b.conservativeResize(std::stable_partition(b.data(), b.data() + b.size(),
     [](int i)->bool { return S(i) >= 0; }) - b.data());
-  // Centroid of the demo, used to compute the positions of selected vertices
-  // during the animation.
-  mid = 0.5 * (V.colwise().maxCoeff() + V.colwise().minCoeff());
-  // Compute the fixed vertices from the frame number.
-  bc = ComputeFixedVertices(atoi(argv[3]));
+  // Compute the fixed vertices.
+  igl::readDMAT(argv[3], bc);
 
   // Parse the algorithm name.
   std::string algorithm(argv[4]);
