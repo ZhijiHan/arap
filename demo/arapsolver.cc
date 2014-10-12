@@ -120,17 +120,14 @@ void ArapSolver::SolveOneIteration() {
   // Clear edge_product.
   edge_product.clear();
   edge_product.resize(vertex_num, Eigen::Matrix3d::Zero());
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges in the mesh.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
-      // Now we have got an edge from first to second.
-      Eigen::Vector3d edge = vertices_.row(first) - vertices_.row(second);
-      Eigen::Vector3d edge_update
-          = vertices_updated_.row(first) - vertices_updated_.row(second);
-      double weight = weight_.coeff(first, second);
-      edge_product[first] += weight * edge * edge_update.transpose();
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d edge = vertices_.row(i) - vertices_.row(j);
+      Eigen::Vector3d edge_update =
+        vertices_updated_.row(i) - vertices_updated_.row(j);
+      edge_product[i] += weight * edge * edge_update.transpose();
     }
   }
   for (int v = 0; v < vertex_num; ++v) {
