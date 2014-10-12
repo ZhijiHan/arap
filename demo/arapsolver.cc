@@ -80,11 +80,11 @@ void ArapSolver::Precompute() {
   // igl::slice(weight_, free_, free_, lb_operator_);
   // lb_operator_ *= -1.0;
 
-  // Cholesky factorization.
+  // LU factorization.
   solver_.compute(lb_operator_);
   if (solver_.info() != Eigen::Success) {
     // Failed to decompose lb_operator_.
-    std::cout << "Fail to do Cholesky factorization." << std::endl;
+    std::cout << "Fail to do LU factorization." << std::endl;
     return;
   }
 }
@@ -164,24 +164,14 @@ void ArapSolver::SolveOneIteration() {
     }
   }
   // Solve for free_.
-  Eigen::VectorXd solution;
-  for (int i = 0; i < 3; ++i) {
-    solution = solver_.solve(rhs.col(i));
-    if (solver_.info() != Eigen::Success) {
-      std::cout << "Fail to solve the sparse linear system." << std::endl;
-      return;
-    }
-    // Sanity check the dimension of solution.
-    if (solution.size() != free_num) {
-      std::cout << "Fail to write back solution: dimension mismatch."
-                << std::endl;
-      return;
-    }
-    // Write back to vertices_updated_.
-    for (int j = 0; j < free_num; ++j) {
-      int vertex_id = free_(j);
-      vertices_updated_(vertex_id, i) = solution(j);
-    }
+  Eigen::MatrixXd solution = solver_.solve(rhs);
+  if (solver_.info() != Eigen::Success) {
+    std::cout << "Fail to solve the sparse linear system." << std::endl;
+    return;
+  }
+  for (int i = 0; i < free_num; ++i) {
+    int pos = free_(i);
+    vertices_updated_.row(pos) = solution.row(i);
   }
 }
 

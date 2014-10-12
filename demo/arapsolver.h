@@ -32,7 +32,7 @@ class ArapSolver : public Solver {
   // The discrete Laplace-Beltrami operator in the left hand side of the linear
   // system defined in equation (9) in the paper.
   Eigen::SparseMatrix<double> lb_operator_;
-  // Sparse linear solver. Use Cholmod from SuiteSparse.
+  // Sparse linear solver.
   Eigen::SparseLU<Eigen::SparseMatrix<double>> solver_;
 };
 
