@@ -1,6 +1,9 @@
 #ifndef _ARAP_DEMO_SOLVER_H_
 #define _ARAP_DEMO_SOLVER_H_
 
+// C++ standard library
+#include <unordered_map>
+
 #include "Eigen/Dense"
 #include "Eigen/Sparse"
 
@@ -8,6 +11,8 @@
 
 namespace arap {
 namespace demo {
+
+typedef std::unordered_map<int, int> Neighbors;
 
 enum VertexType {
   Fixed,
@@ -108,6 +113,8 @@ class Solver {
   Eigen::SparseMatrix<double> weight_;
   // A vector to store rotations for all the vertices.
   std::vector<Eigen::Matrix3d> rotations_;
+  // A data structure to store all the neighborhood for each vertex.
+  std::vector<Neighbors> neighbors_;
   // Max number of iterations used to solve ARAP.
   const int max_iteration_;
 };

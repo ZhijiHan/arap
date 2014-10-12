@@ -45,10 +45,40 @@ void ArapSolver::Precompute() {
     }
   }
 
+  // Compute neighbors.
+  neighbors_.resize(vertex_num, Neighbors());
+  for (int f = 0; f < face_num; ++f) {
+    for (int i = 0; i < 3; ++i) {
+      int first = faces_(f, index_map[i][0]);
+      int second = faces_(f, index_map[i][1]);
+      neighbors_[first][second] = second;
+      neighbors_[second][first] = first;
+    }
+  }
+
+  // Compute lb_operator_.
+  int free_num = free_.size();
+  lb_operator_.resize(free_num, free_num);
+  for (int i = 0; i < free_num; ++i) {
+    // pos is the vertex's position in vertices_.
+    int pos = free_(i);
+    // Loop over all the neighbors.
+    for (auto& neighbor : neighbors_[pos]) {
+      // Get the index of the neighbor.
+      int neighbor_pos = neighbor.first;
+      double weight = weight_.coeff(pos, neighbor_pos);
+      lb_operator_.coeffRef(i, i) += weight;
+      if (vertex_info_[neighbor_pos].type == VertexType::Free) {
+        lb_operator_.coeffRef(i, vertex_info_[neighbor_pos].pos) -= weight;
+      }
+    }
+  }
+  lb_operator_.makeCompressed();
+  // FYI: another simple method to compute lb_operator_ is below.
   // Compute lb_operator_. This matrix can be computed by extracting free_ rows
   // and columns from -weight_.
-  igl::slice(weight_, free_, free_, lb_operator_);
-  lb_operator_ *= -1.0;
+  // igl::slice(weight_, free_, free_, lb_operator_);
+  // lb_operator_ *= -1.0;
 
   // Cholesky factorization.
   solver_.compute(lb_operator_);
