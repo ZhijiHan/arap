@@ -140,23 +140,17 @@ void ArapSolver::SolveOneIteration() {
   // The right hand side of equation (9). The x, y and z coordinates are
   // computed separately.
   Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num, 3);
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges in the mesh.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
-      // If first is fixed, skip it.
-      if (vertex_info_[first].type == VertexType::Fixed)
-        continue;
-      int vertex_id = vertex_info_[first].pos;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d vec = weight / 2.0 *
-          (rotations_[first] + rotations_[second]) *
-          (vertices_.row(first) - vertices_.row(second)).transpose();
-      rhs.row(vertex_id) += vec.transpose();
-      if (vertex_info_[second].type == VertexType::Fixed) {
-        // If second is fixed, add another term in the right hand side.
-        rhs.row(vertex_id) += weight * vertices_updated_.row(second);
+  for (int i = 0; i < free_num; ++i) {
+    int i_pos = free_(i);
+    for (auto& neighbor : neighbors_[i_pos]) {
+      int j_pos = neighbor.first;
+      double weight = weight_.coeff(i_pos, j_pos);
+      Eigen::Vector3d vec = weight / 2.0
+        * (rotations_[i_pos] + rotations_[j_pos])
+        * (vertices_.row(i_pos) - vertices_.row(j_pos)).transpose();
+      rhs.row(i) += vec;
+      if (vertex_info_[j_pos].type == VertexType::Fixed) {
+        rhs.row(i) += weight * vertices_updated_.row(j_pos);
       }
     }
   }
