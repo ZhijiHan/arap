@@ -1,3 +1,8 @@
+#include "adaptadmmfixedsolver.h"
+#include "adaptadmmfreesolver.h"
+#include "admmfixedsolver.h"
+#include "admmfreesolver.h"
+#include "arapbenchmarksolver.h"
 #include "arapsolver.h"
 
 // C++ standard library
@@ -20,14 +25,13 @@
 #include <igl/svd3x3/arap.h>
 #include <igl/viewer/Viewer.h>
 
-// Change this to 0 if we don't want to use IGL's implementation.
-#define USE_IGL_AS_BENCHMARK 1
-
 // Vertex matrix. V is the original vertices from .off file, and U is the
 // vertices updated in each frame.
 Eigen::MatrixXd V, U;
 // Face matrix. F is read from .off file.
 Eigen::MatrixXi F;
+// Fixed vertices.
+Eigen::MatrixXd bc;
 // Color matrix used to display selected points from S and b below.
 Eigen::MatrixXd C;
 // S is a column vector representing vertices with predefined coordinates in
@@ -36,14 +40,10 @@ Eigen::MatrixXd C;
 // S is the same as the # of vertices. b contains the indices of those vertices
 // whose S is nonnegative.
 Eigen::VectorXi S, b;
-Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
-#if USE_IGL_AS_BENCHMARK
-igl::ARAPData arap_data;
-#endif
 // Our own implementation of ARAP.
-arap::demo::ArapSolver arap_solver;
+arap::demo::Solver* solver = nullptr;
 
 // Color used to draw precomputed vertices.
 static const Eigen::RowVector3d kPurple(80.0 / 255.0,
@@ -52,64 +52,20 @@ static const Eigen::RowVector3d kPurple(80.0 / 255.0,
 static const Eigen::RowVector3d kGold(255.0 / 255.0,
                                       228.0 / 255.0,
                                       58.0 / 255.0);
-// Error threshold.
-static const double kErrorPerVertexCoord = 1e-8;
 
 bool pre_draw(igl::Viewer& viewer) {
-  if (!viewer.core.is_animating)
+  static int iteration = 0;
+  if (!viewer.core.is_animating
+    || iteration >= solver->GetMaxIteration())
     return false;
-  Eigen::MatrixXd bc(b.size(), V.cols());
-  for(int i = 0; i < b.size(); ++i) {
-    bc.row(i) = V.row(b(i));
-    switch(S(b(i))) {
-      case 0: {
-        const double r = mid(0) * 0.25;
-        bc(i,0) += r * sin(0.5 * anim_t * 2. * igl::PI);
-        bc(i,1) -= r + r * cos(igl::PI + 0.5 * anim_t * 2. * igl::PI);
-        break;
-      }
-      case 1: {
-        const double r = mid(1) * 0.15;
-        bc(i,1) += r + r * cos(igl::PI + 0.15 * anim_t * 2. * igl::PI);
-        bc(i,2) -= r * sin(0.15 * anim_t * 2. * igl::PI);
-        break;
-      }
-      case 2: {
-        const double r = mid(1) * 0.15;
-        bc(i,2) += r + r * cos(igl::PI + 0.35 * anim_t * 2. * igl::PI);
-        bc(i,0) += r * sin(0.35 * anim_t * 2. * igl::PI);
-        break;
-      }
-      default:
-        break;
-    }
-  }
-#if USE_IGL_AS_BENCHMARK
-  // Solve the arap problem.
-  igl::arap_solve(bc, arap_data, U);
-  // The above U is the ground truth solution.
-#endif
-  arap_solver.Solve(bc);
-  Eigen::MatrixXd solution = arap_solver.GetVertexSolution();
-#if USE_IGL_AS_BENCHMARK
-  // Compare the ground truth and our solution.
-  double abs_error = (U - solution).norm();
-  double relative_error = abs_error / U.norm();
-  int vertex_num = V.rows();
-  // The norm method in Eigen returns Frobenius norm for matrices.
-  if (abs_error > sqrt(3 * vertex_num * kErrorPerVertexCoord)) {
-    std::cout << "Fail to pass the test:" << std::endl
-              << "Absolute error = " << abs_error << " "
-              << "Relative error = " << relative_error << std::endl;
-  }
-#endif
+  solver->SolveOneIteration();
+  arap::demo::Energy energy = solver->ComputeEnergy();
+  std::cout << "Iteration: " << iteration << " Energy: " << energy;
+  Eigen::MatrixXd solution = solver->GetVertexSolution();
   viewer.data.set_vertices(solution);
   viewer.data.set_points(bc, C);
   viewer.data.compute_normals();
-  // Display the energy.
-  std::cout << "Energy: " << arap_solver.ComputeEnergy() << std::endl;
-  // Update anim_t for next frame.
-  anim_t += anim_t_dir;
+  ++iteration;
   return false;
 }
 
@@ -123,12 +79,14 @@ bool key_down(igl::Viewer& viewer, unsigned char key, int mods) {
   }
 }
 
-// Usage: ./demo_bin [.off file name] [.dmat file name].
+// Usage: ./demo_bin [.off file name] [.dmat file name] [.dmat file name]
+// [algorithm name] [iteration number] [rho]
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
+  if (argc < 6) {
     std::cout << "Not enough input parameters." << std::endl
-              << "Usage: demo_bin [.off file name] [.dmat file name]."
-              << std::endl;
+              << "Usage: demo_bin [.off file name] [.dmat file name] "
+                 "[.dmat file name] [algorithm name] [iteration number] "
+                 "[rho]" << std::endl;
     return 0;
   }
   // Read V and F from file.
@@ -154,21 +112,43 @@ int main(int argc, char *argv[]) {
   // b = 0 1 2 4 6
   b.conservativeResize(std::stable_partition(b.data(), b.data() + b.size(),
     [](int i)->bool { return S(i) >= 0; }) - b.data());
-  // Centroid of the demo, used to compute the positions of selected vertices
-  // during the animation.
-  mid = 0.5 * (V.colwise().maxCoeff() + V.colwise().minCoeff());
+  // Compute the fixed vertices.
+  igl::readDMAT(argv[3], bc);
 
-#if USE_IGL_AS_BENCHMARK
-  // Set the max iteration during the optimization to be 100.
-  arap_data.max_iter = 100;
-  // Set the energy type to be the one used in Sorkine and Alexa's paper
-  // "As-Rigid-As-Possible Surface Modeling".
-  arap_data.energy = igl::ARAP_ENERGY_TYPE_SPOKES;
-  igl::arap_precomputation(V, F, V.cols(), b, arap_data);
-#endif
-  // Add our own pre computation implementation here.
-  arap_solver.RegisterData(V, F, b, 100);
-  arap_solver.Precompute();
+  // Parse the algorithm name.
+  std::string algorithm(argv[4]);
+  int iter_num = atoi(argv[5]);
+  if (algorithm == "arap") {
+    std::cout << "Use ArapSolver." << std::endl;
+    solver = new arap::demo::ArapSolver(V, F, b, iter_num);
+  } else if (algorithm == "admm-fixed") {
+    std::cout << "Use AdmmFixedSolver." << std::endl;
+    double rho = atof(argv[6]);
+    std::cout << "rho = " << rho << std::endl;
+    solver = new arap::demo::AdmmFixedSolver(V, F, b, iter_num, rho);
+  } else if (algorithm == "admm-free") {
+    std::cout << "Use AdmmFreeSolver." << std::endl;
+    double rho = atof(argv[6]);
+    std::cout << "rho = " << rho << std::endl;
+    solver = new arap::demo::AdmmFreeSolver(V, F, b, iter_num, rho);
+  } else if (algorithm == "adapt-admm-fixed") {
+    std::cout << "Use AdaptAdmmFixedSolver." << std::endl;
+    double rho = atof(argv[6]);
+    std::cout << "rho = " << rho << std::endl;
+    solver = new arap::demo::AdaptAdmmFixedSolver(V, F, b, iter_num, rho);
+  } else if (algorithm == "adapt-admm-free") {
+    std::cout << "Use AdaptAdmmFreeSolver." << std::endl;
+    double rho = atof(argv[6]);
+    std::cout << "rho = " << rho << std::endl;
+    solver = new arap::demo::AdaptAdmmFreeSolver(V, F, b, iter_num, rho);
+  } else if (algorithm == "arap-benchmark") {
+    std::cout << "Use ArapBenchmarkSolver." << std::endl;
+    solver = new arap::demo::ArapBenchmarkSolver(V, F, b, iter_num);
+  }
+
+  solver->Precompute();
+  // Prepare to solve the problem.
+  solver->SolvePreprocess(bc);
 
   // Set colors for selected vertices.
   C.resize(b.rows(), 3);

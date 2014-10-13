@@ -10,88 +10,18 @@
 namespace arap {
 namespace demo {
 
-ArapSolver::ArapSolver() {
-}
-
-// If it is the first time to register data, return true; else return false.
-bool ArapSolver::RegisterData(const Eigen::MatrixXd& vertices,
+ArapSolver::ArapSolver(const Eigen::MatrixXd& vertices,
     const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
-    int max_iteration) {
-  static bool registered = false;
-  if (!registered) {
-    registered = true;
-    vertices_ = vertices;
-    faces_ = faces;
-    fixed_ = fixed;
-    max_iteration_ = max_iteration;
-    // Compute free_.
-    int vertex_num = vertices_.rows();
-    int fixed_num = fixed_.size();
-    int free_num = vertex_num - fixed_num;
-    free_.resize(free_num);
-    int j = 0, k = 0;
-    for (int i = 0; i < vertex_num; ++i) {
-      if (j < fixed_num && i == fixed_(j)) {
-        ++j;
-      } else {
-        free_(k) = i;
-        ++k;
-      }
-    }
-    // Sanity check the sizes of fixed_ and free_ are correct.
-    if (j != fixed_num || k != free_num) {
-      std::cout << "Fail to compute free_ in ArapSolver: dimension mismatch."
-                << std::endl;
-      return false;
-    }
-    // Compute information for each vertex.
-    vertex_info_.resize(vertex_num);
-    // Compute information for each fixed vertex.
-    for (int i = 0; i < fixed_num; ++i) {
-      int vertex_id = fixed_(i);
-      VertexInfo info(VertexType::Fixed, i);
-      vertex_info_[vertex_id] = info;
-    }
-    // Compute information for each free vertex.
-    for (int i = 0; i < free_num; ++i) {
-      int vertex_id = free_(i);
-      VertexInfo info(VertexType::Free, i);
-      vertex_info_[vertex_id] = info;
-    }
-    // Sanity check for all the vertices.
-    for (int i = 0; i < vertex_num; ++i) {
-      VertexInfo info = vertex_info_[i];
-      switch (info.type) {
-        case Fixed:
-          if (fixed_(info.pos) != i) {
-            std::cout << "Fail to test vertex info: wrong fixed position."
-                      << std::endl;
-            return false;
-          }
-          break;
-        case Free:
-          if (free_(info.pos) != i) {
-            std::cout << "Fail to test vertex info: wrong free position."
-                      << std::endl;
-            return false;
-          }
-          break;
-        default:
-          std::cout << "Unknown vertex type." << std::endl;
-          return false;
-      }
-    }
-    return true;
-  }
-  return false;
+    int max_iteration)
+  : Solver(vertices, faces, fixed, max_iteration) {
 }
 
 void ArapSolver::Precompute() {
   int vertex_num = vertices_.rows();
   int face_num = faces_.rows();
 
-  // Compute cot_weight_.
-  cot_weight_.resize(vertex_num, vertex_num);
+  // Compute weight_.
+  weight_.resize(vertex_num, vertex_num);
   // An index map to help mapping from one vertex to the corresponding edge.
   int index_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   // Loop over all the faces.
@@ -107,136 +37,132 @@ void ArapSolver::Precompute() {
       int first = faces_(f, index_map[i][0]);
       int second = faces_(f, index_map[i][1]);
       double half_cot = cotangent(i) / 2.0;
-      cot_weight_.coeffRef(first, second) += half_cot;
-      cot_weight_.coeffRef(second, first) += half_cot;
-      // Note that cot_weight_(i, i) is the sum of all the -cot_weight_(i, j).
-      cot_weight_.coeffRef(first, first) -= half_cot;
-      cot_weight_.coeffRef(second, second) -= half_cot;
+      weight_.coeffRef(first, second) += half_cot;
+      weight_.coeffRef(second, first) += half_cot;
+      // Note that weight_(i, i) is the sum of all the -weight_(i, j).
+      weight_.coeffRef(first, first) -= half_cot;
+      weight_.coeffRef(second, second) -= half_cot;
     }
   }
 
-  // Compute lb_operator_. This matrix can be computed by extracting free_ rows
-  // and columns from -cot_weight_.
-  igl::slice(cot_weight_, free_, free_, lb_operator_);
-  lb_operator_ *= -1.0;
+  // Compute neighbors.
+  neighbors_.resize(vertex_num, Neighbors());
+  for (int f = 0; f < face_num; ++f) {
+    for (int i = 0; i < 3; ++i) {
+      int first = faces_(f, index_map[i][0]);
+      int second = faces_(f, index_map[i][1]);
+      neighbors_[first][second] = second;
+      neighbors_[second][first] = first;
+    }
+  }
 
-  // Cholesky factorization.
+  // Compute lb_operator_.
+  int free_num = free_.size();
+  lb_operator_.resize(free_num, free_num);
+  for (int i = 0; i < free_num; ++i) {
+    // pos is the vertex's position in vertices_.
+    int pos = free_(i);
+    // Loop over all the neighbors.
+    for (auto& neighbor : neighbors_[pos]) {
+      // Get the index of the neighbor.
+      int neighbor_pos = neighbor.first;
+      double weight = weight_.coeff(pos, neighbor_pos);
+      lb_operator_.coeffRef(i, i) += weight;
+      if (vertex_info_[neighbor_pos].type == VertexType::Free) {
+        lb_operator_.coeffRef(i, vertex_info_[neighbor_pos].pos) -= weight;
+      }
+    }
+  }
+  lb_operator_.makeCompressed();
+  // FYI: another simple method to compute lb_operator_ is below.
+  // Compute lb_operator_. This matrix can be computed by extracting free_ rows
+  // and columns from -weight_.
+  // igl::slice(weight_, free_, free_, lb_operator_);
+  // lb_operator_ *= -1.0;
+
+  // LU factorization.
   solver_.compute(lb_operator_);
   if (solver_.info() != Eigen::Success) {
     // Failed to decompose lb_operator_.
-    std::cout << "Fail to do Cholesky factorization." << std::endl;
+    std::cout << "Fail to do LU factorization." << std::endl;
     return;
   }
 }
 
-void ArapSolver::Solve(const Eigen::MatrixXd& fixed_vertices) {
-  // The optimization goes alternatively between solving vertices and
-  // rotations.
-  // Step 0: replace some vertices in vertices_updated_ with fixed_vertices.
-  // Step 1: given vertices_ and vertices_updated_, solve the rotations for all
-  // the vertices by polar_svd.
-  // Step 2: update the rhs in equation (9) with updated rotations.
-  // Step 3: repeat Step 1 and Step 2 for max_iteration times.
-
-  // Step 0: replace vertices with fixed_vertices.
+void ArapSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
+  // Initialize fixed_vertices_.
+  fixed_vertices_ = fixed_vertices;
+  // Initialized with vertices_. Note that this is different from the default
+  // setting in the ARAP demo, which uses the value from last from for
+  // initialization.
+  vertices_updated_ = vertices_;
   int fixed_num = fixed_.size();
-  // Sanity check for the # of vertices in fixed_vertices.
-  if (fixed_vertices.rows() != fixed_num) {
-    std::cout << "Fail to solve: number of fixed vertices mismatch."
-              << std::endl;
-    return;
-  }
-  if (vertices_updated_.size() == 0) {
-    // The first time to compute vertices_updated_, use vertices_ to initialize
-    // vertices_updated_.
-    vertices_updated_ = vertices_;
-  }
   for (int i = 0; i < fixed_num; ++i) {
-    vertices_updated_.row(fixed_(i)) = fixed_vertices.row(i);
+    vertices_updated_.row(fixed_(i)) = fixed_vertices_.row(i);
   }
-
-  int iter = 0;
-  int vertex_num = vertices_.rows();
-  int face_num = faces_.rows();
   // Initialize rotations_ with Identity matrices.
   rotations_.clear();
+  int vertex_num = vertices_.rows();
   rotations_.resize(vertex_num, Eigen::Matrix3d::Identity());
+}
+
+void ArapSolver::SolveOneIteration() {
+  int fixed_num = fixed_.size();
+  int vertex_num = vertices_.rows();
+  int face_num = faces_.rows();
 
   // A temporary vector to hold all the edge products for all the vertices.
   // This is the S matrix in equation (5).
   std::vector<Eigen::Matrix3d> edge_product;
   // edge_map is used for looping over three edges in a triangle.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  while (iter < max_iteration_) {
-    // Step 1: solve rotations by polar_svd.
-    // Clear edge_product.
-    edge_product.clear();
-    edge_product.resize(vertex_num, Eigen::Matrix3d::Zero());
-    for (int f = 0; f < face_num; ++f) {
-      // Loop over all the edges in the mesh.
-      for (int e = 0; e < 3; ++e) {
-        int first = faces_(f, edge_map[e][0]);
-        int second = faces_(f, edge_map[e][1]);
-        // Now we have got an edge from first to second.
-        Eigen::Vector3d edge = vertices_.row(first) - vertices_.row(second);
-        Eigen::Vector3d edge_update
-            = vertices_updated_.row(first) - vertices_updated_.row(second);
-        double weight = cot_weight_.coeff(first, second);
-        edge_product[first] += weight * edge * edge_update.transpose();
+  // Step 1: solve rotations by polar_svd.
+  // Clear edge_product.
+  edge_product.clear();
+  edge_product.resize(vertex_num, Eigen::Matrix3d::Zero());
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d edge = vertices_.row(i) - vertices_.row(j);
+      Eigen::Vector3d edge_update =
+        vertices_updated_.row(i) - vertices_updated_.row(j);
+      edge_product[i] += weight * edge * edge_update.transpose();
+    }
+  }
+  for (int v = 0; v < vertex_num; ++v) {
+    Eigen::Matrix3d rotation;
+    igl::polar_svd3x3(edge_product[v], rotation);
+    rotations_[v] = rotation.transpose();
+  }
+  // Step 2: compute the rhs in equation (9).
+  int free_num = free_.size();
+  // The right hand side of equation (9). The x, y and z coordinates are
+  // computed separately.
+  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num, 3);
+  for (int i = 0; i < free_num; ++i) {
+    int i_pos = free_(i);
+    for (auto& neighbor : neighbors_[i_pos]) {
+      int j_pos = neighbor.first;
+      double weight = weight_.coeff(i_pos, j_pos);
+      Eigen::Vector3d vec = weight / 2.0
+        * (rotations_[i_pos] + rotations_[j_pos])
+        * (vertices_.row(i_pos) - vertices_.row(j_pos)).transpose();
+      rhs.row(i) += vec;
+      if (vertex_info_[j_pos].type == VertexType::Fixed) {
+        rhs.row(i) += weight * vertices_updated_.row(j_pos);
       }
     }
-    for (int v = 0; v < vertex_num; ++v) {
-      Eigen::Matrix3d rotation;
-      igl::polar_svd3x3(edge_product[v], rotation);
-      rotations_[v] = rotation.transpose();
-    }
-    // Step 2: compute the rhs in equation (9).
-    int free_num = free_.size();
-    // The right hand side of equation (9). The x, y and z coordinates are
-    // computed separately.
-    Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num, 3);
-    for (int f = 0; f < face_num; ++f) {
-      // Loop over all the edges in the mesh.
-      for (int e = 0; e < 3; ++e) {
-        int first = faces_(f, edge_map[e][0]);
-        int second = faces_(f, edge_map[e][1]);
-        // If first is fixed, skip it.
-        if (vertex_info_[first].type == VertexType::Fixed)
-          continue;
-        int vertex_id = vertex_info_[first].pos;
-        double weight = cot_weight_.coeff(first, second);
-        Eigen::Vector3d vec = weight / 2.0 *
-            (rotations_[first] + rotations_[second]) *
-            (vertices_.row(first) - vertices_.row(second)).transpose();
-        rhs.row(vertex_id) += vec.transpose();
-        if (vertex_info_[second].type == VertexType::Fixed) {
-          // If second is fixed, add another term in the right hand side.
-          rhs.row(vertex_id) += weight * vertices_updated_.row(second);
-        }
-      }
-    }
-    // Solve for free_.
-    Eigen::VectorXd solution;
-    for (int i = 0; i < 3; ++i) {
-      solution = solver_.solve(rhs.col(i));
-      if (solver_.info() != Eigen::Success) {
-        std::cout << "Fail to solve the sparse linear system." << std::endl;
-        return;
-      }
-      // Sanity check the dimension of solution.
-      if (solution.size() != free_num) {
-        std::cout << "Fail to write back solution: dimension mismatch."
-                  << std::endl;
-        return;
-      }
-      // Write back to vertices_updated_.
-      for (int j = 0; j < free_num; ++j) {
-        int vertex_id = free_(j);
-        vertices_updated_(vertex_id, i) = solution(j);
-      }
-    }
-    // Increment.
-    ++iter;
+  }
+  // Solve for free_.
+  Eigen::MatrixXd solution = solver_.solve(rhs);
+  if (solver_.info() != Eigen::Success) {
+    std::cout << "Fail to solve the sparse linear system." << std::endl;
+    return;
+  }
+  for (int i = 0; i < free_num; ++i) {
+    int pos = free_(i);
+    vertices_updated_.row(pos) = solution.row(i);
   }
 }
 
@@ -271,10 +197,10 @@ Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {
   return cotangent;
 }
 
-double ArapSolver::ComputeEnergy() const {
+Energy ArapSolver::ComputeEnergy() const {
   // Compute the energy.
   int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  double energy = 0.0;
+  double total = 0.0;
   int face_num = faces_.rows();
   for (int f = 0; f < face_num; ++f) {
     // Loop over all the edges.
@@ -282,15 +208,17 @@ double ArapSolver::ComputeEnergy() const {
       int first = faces_(f, edge_map[e][0]);
       int second = faces_(f, edge_map[e][1]);
       double edge_energy = 0.0;
-      double weight = cot_weight_.coeff(first, second);
+      double weight = weight_.coeff(first, second);
       Eigen::Vector3d vec = (vertices_updated_.row(first) -
           vertices_updated_.row(second)).transpose() -
           rotations_[first] * (vertices_.row(first) -
           vertices_.row(second)).transpose();
       edge_energy = weight * vec.squaredNorm();
-      energy += edge_energy;
+      total += edge_energy;
     }
   }
+  Energy energy;
+  energy.AddEnergyType("Total", total);
   return energy;
 }
 
