@@ -57,9 +57,6 @@ bool pre_draw(igl::Viewer& viewer) {
   static int iteration = 0;
   if (!viewer.core.is_animating
     || iteration >= solver->GetMaxIteration()) {
-    if (iteration >= solver->GetMaxIteration()) {
-      std::cout << "Reach max iterations." << std::endl;
-    }
     return false;
   }
   solver->SolveOneIteration();
