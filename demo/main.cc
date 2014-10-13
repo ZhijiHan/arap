@@ -2,6 +2,7 @@
 #include "adaptadmmfreesolver.h"
 #include "admmfixedsolver.h"
 #include "admmfreesolver.h"
+#include "arapbenchmarksolver.h"
 #include "arapsolver.h"
 
 // C++ standard library
@@ -140,6 +141,9 @@ int main(int argc, char *argv[]) {
     double rho = atof(argv[6]);
     std::cout << "rho = " << rho << std::endl;
     solver = new arap::demo::AdaptAdmmFreeSolver(V, F, b, iter_num, rho);
+  } else if (algorithm == "arap-benchmark") {
+    std::cout << "Use ArapBenchmarkSolver." << std::endl;
+    solver = new arap::demo::ArapBenchmarkSolver(V, F, b, iter_num);
   }
 
   solver->Precompute();

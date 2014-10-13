@@ -10,6 +10,7 @@ ${PROJECT_SOURCE_DIR}/adaptadmmfreesolver.cc
 ${PROJECT_SOURCE_DIR}/admmfixedsolver.cc
 ${PROJECT_SOURCE_DIR}/admmfreesolver.cc
 ${PROJECT_SOURCE_DIR}/arapsolver.cc
+${PROJECT_SOURCE_DIR}/arapbenchmarksolver.cc
 ${PROJECT_SOURCE_DIR}/energy.cc
 ${PROJECT_SOURCE_DIR}/solver.cc
 )
