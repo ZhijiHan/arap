@@ -25,9 +25,6 @@ class ArapSolver : public Solver {
   // Given all the current data members, compute the energy.
   Energy ComputeEnergy() const;
 
-  // Given all the current data members, compute the energy.
-  double ComputeEnergy() const;
-
  private:
   // Computes the cotangent angle in one face indicated by |face_id|.
   Eigen::Vector3d ComputeCotangent(int face_id) const;
