@@ -28,7 +28,7 @@ class AdaptAdmmFreeSolver : public Solver {
  private:
   // A helper function to compute |matrix_id|'s |variable_id|-th variable's
   // position.
-  int GetMatrixVariablePos(int vertex_num, int matrix_id, int variable_id);
+  int GetMatrixVariablePos(int matrix_id, int variable_id);
 
   // A helper function to verify our linear solve. Returns true if the current
   // vertices_updated_ and rotations_ are the optimal solution.
@@ -89,8 +89,9 @@ class AdaptAdmmFreeSolver : public Solver {
   Eigen::SparseMatrix<double> M_;
 };
 
-inline int AdaptAdmmFreeSolver::GetMatrixVariablePos(int vertex_num, int matrix_id,
+inline int AdaptAdmmFreeSolver::GetMatrixVariablePos(int matrix_id,
     int variable_id) {
+  int vertex_num = vertices_.rows();
   return vertex_num + 3 * matrix_id + variable_id;
 }
 
