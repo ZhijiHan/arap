@@ -21,8 +21,7 @@ ArapBenchmarkSolver::ArapBenchmarkSolver(const Eigen::MatrixXd& vertices,
 }
 
 void ArapBenchmarkSolver::Precompute() {
-  // Do nothing.
-  // We don't want to expose all the inner states of libigl's implementation.
+  vertices_updated_ = vertices_;
 }
 
 void ArapBenchmarkSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
