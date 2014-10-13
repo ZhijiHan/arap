@@ -79,24 +79,24 @@ bool key_down(igl::Viewer& viewer, unsigned char key, int mods) {
   }
 }
 
-// Usage: ./demo_bin [.off file name] [.dmat file name] [.dmat file name]
-// [algorithm name] [iteration number] [rho]
+// Usage: ./demo_bin [model file name] [algorithm name] [iteration number] [rho]
 int main(int argc, char *argv[]) {
-  if (argc < 6) {
+  if (argc < 4) {
     std::cout << "Not enough input parameters." << std::endl
-              << "Usage: demo_bin [.off file name] [.dmat file name] "
-                 "[.dmat file name] [algorithm name] [iteration number] "
+              << "Usage: demo_bin [model file name] "
+                 "[algorithm name] [iteration number] "
                  "[rho]" << std::endl;
     return 0;
   }
+  std::string model_name = std::string(argv[1]);
   // Read V and F from file.
-  igl::readOFF(argv[1], V, F);
+  igl::readOFF(model_name + ".off", V, F);
   // U is initialized with V and gets updated in every frame. V will be the
   // initial state of vertices during the animation.
   U = V;
 
   // Read S from file. See comments about S above.
-  igl::readDMAT(argv[2], S);
+  igl::readDMAT(model_name + "-selection.dmat", S);
   // This works the same as the Matlab code: b = 0 : V.rows() - 1.
   igl::colon<int>(0, V.rows() - 1, b);
   // stable_partition will partition b such that elements with S(i) >= 0 are in
@@ -113,32 +113,32 @@ int main(int argc, char *argv[]) {
   b.conservativeResize(std::stable_partition(b.data(), b.data() + b.size(),
     [](int i)->bool { return S(i) >= 0; }) - b.data());
   // Compute the fixed vertices.
-  igl::readDMAT(argv[3], bc);
+  igl::readDMAT(model_name + ".dmat", bc);
 
   // Parse the algorithm name.
-  std::string algorithm(argv[4]);
-  int iter_num = atoi(argv[5]);
+  std::string algorithm(argv[2]);
+  int iter_num = atoi(argv[3]);
   if (algorithm == "arap") {
     std::cout << "Use ArapSolver." << std::endl;
     solver = new arap::demo::ArapSolver(V, F, b, iter_num);
   } else if (algorithm == "admm-fixed") {
     std::cout << "Use AdmmFixedSolver." << std::endl;
-    double rho = atof(argv[6]);
+    double rho = atof(argv[4]);
     std::cout << "rho = " << rho << std::endl;
     solver = new arap::demo::AdmmFixedSolver(V, F, b, iter_num, rho);
   } else if (algorithm == "admm-free") {
     std::cout << "Use AdmmFreeSolver." << std::endl;
-    double rho = atof(argv[6]);
+    double rho = atof(argv[4]);
     std::cout << "rho = " << rho << std::endl;
     solver = new arap::demo::AdmmFreeSolver(V, F, b, iter_num, rho);
   } else if (algorithm == "adapt-admm-fixed") {
     std::cout << "Use AdaptAdmmFixedSolver." << std::endl;
-    double rho = atof(argv[6]);
+    double rho = atof(argv[4]);
     std::cout << "rho = " << rho << std::endl;
     solver = new arap::demo::AdaptAdmmFixedSolver(V, F, b, iter_num, rho);
   } else if (algorithm == "adapt-admm-free") {
     std::cout << "Use AdaptAdmmFreeSolver." << std::endl;
-    double rho = atof(argv[6]);
+    double rho = atof(argv[4]);
     std::cout << "rho = " << rho << std::endl;
     solver = new arap::demo::AdaptAdmmFreeSolver(V, F, b, iter_num, rho);
   } else if (algorithm == "arap-benchmark") {
