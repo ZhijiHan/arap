@@ -55,6 +55,17 @@ void AdmmFreeSolver::Precompute() {
     }
   }
 
+  // Compute neighbors.
+  neighbors_.resize(vertex_num, Neighbors());
+  for (int f = 0; f < face_num; ++f) {
+    for (int i = 0; i < 3; ++i) {
+      int first = faces_(f, index_map[i][0]);
+      int second = faces_(f, index_map[i][1]);
+      neighbors_[first][second] = second;
+      neighbors_[second][first] = first;
+    }
+  }
+
   // Compute the left matrix M_.
   // The dimension of M_ should be # of constraints by # of unknowns. i.e.,
   // (4 * vertex_num) * (4 * vertex_num).
@@ -73,8 +84,6 @@ void AdmmFreeSolver::Precompute() {
 #ifdef USE_LINEAR_SOLVE_1
   // Start of the first method: compute the gradient directly.
   M_.resize(4 * vertex_num, 4 * vertex_num);
-  // Loop over all the edges.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   for (int j = 0; j < fixed_num; ++j) {
     int pos = fixed_(j);
     M_.coeffRef(pos, pos) += rho_;
@@ -82,37 +91,35 @@ void AdmmFreeSolver::Precompute() {
   for (int i = vertex_num; i < 4 * vertex_num; ++i) {
     M_.coeffRef(i, i) += rho_;
   }
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
-      // Each edge is visited twice: i->j and j->i.
-      // We treat first as 'i' in our constraints.
-      // The i-th constraints are in the i-th and vertex_num + 3 * i :
-      // vertex_num + 3 * i + 2 row in M_.
-      double weight = weight_.coeff(first, second);
-      M_.coeffRef(first, first) +=  2 * weight;
-      M_.coeffRef(first, second) -= 2 * weight;
-      M_.coeffRef(second, first) -= 2 * weight;
-      M_.coeffRef(second, second) += 2 * weight;
-      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
-      for (int i = 0; i < 3; ++i) {
-        M_.coeffRef(first, vertex_num + 3 * first + i) -= 2 * weight * v(i);
-        M_.coeffRef(second, vertex_num + 3 * first + i) += 2 * weight * v(i);
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d v = vertices_.row(i) - vertices_.row(j);
+      // Contributes to i:
+      M_.coeffRef(i, i) += 2 * weight;
+      M_.coeffRef(i, j) -= 2 * weight;
+      for (int k = 0; k < 3; ++k) {
+        M_.coeffRef(i, GetMatrixVariablePos(i, k)) -= 2 * weight * v(k);
       }
-      // Rotation constraints.
+      // Contributes to j:
+      M_.coeffRef(j, i) -= 2 * weight;
+      M_.coeffRef(j, j) += 2 * weight;
+      for (int k = 0; k < 3; ++k) {
+        M_.coeffRef(j, GetMatrixVariablePos(i, k)) += 2 * weight * v(k);
+      }
+      // Contributes to R_i:
       Eigen::Matrix3d m = v * v.transpose() * weight * 2;
-      for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-          M_.coeffRef(vertex_num + 3 * first + i, vertex_num + 3 * first + j)
-            += m(i, j);
-        }
+      for (int k = 0; k < 3; ++k) {
+        double val = weight * 2 * v(k);
+        M_.coeffRef(GetMatrixVariablePos(i, k), i) -= val;
+        M_.coeffRef(GetMatrixVariablePos(i, k), j) += val;
       }
-      for (int i = 0; i < 3; ++i) {
-        double val = weight * 2 * v(i);
-        M_.coeffRef(vertex_num + 3 * first + i, first) -= val;
-        M_.coeffRef(vertex_num + 3 * first + i, second) += val;
+      for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+          M_.coeffRef(GetMatrixVariablePos(i, r), GetMatrixVariablePos(i, c))
+            += m(r, c);
+        }
       }
     }
   }
@@ -127,27 +134,22 @@ void AdmmFreeSolver::Precompute() {
 #ifdef USE_LINEAR_SOLVE_2
   // Start of the second method.
   M_.resize(4 * vertex_num, 4 * vertex_num);
-  // Loop over all the edges.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
-      // What is p_1 - p_2?
-      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      Eigen::Vector3d v = vertices_.row(i) - vertices_.row(j);
       // What is the weight?
-      double weight = weight_.coeff(first, second);
+      double weight = weight_.coeff(i, j);
       // What is the dimension of A?
       // A is a one line sparse row vector!
       Eigen::SparseMatrix<double> A;
       A.resize(1, 4 * vertex_num);
       // Compute A.
-      A.coeffRef(0, first) = 1;
-      A.coeffRef(0, second) = -1;
-      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 0)) = -v(0);
-      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 1)) = -v(1);
-      A.coeffRef(0, GetMatrixVariablePos(vertex_num, first, 2)) = -v(2);
+      A.coeffRef(0, i) = 1;
+      A.coeffRef(0, j) = -1;
+      A.coeffRef(0, GetMatrixVariablePos(i, 0)) = -v(0);
+      A.coeffRef(0, GetMatrixVariablePos(i, 1)) = -v(1);
+      A.coeffRef(0, GetMatrixVariablePos(i, 2)) = -v(2);
       // Add A to M_.
       M_ = M_ + 2 * weight * A.transpose() * A;
       // What is b? b is zero!
@@ -160,9 +162,9 @@ void AdmmFreeSolver::Precompute() {
     // What is A?
     Eigen::SparseMatrix<double> A;
     A.resize(3, 4 * vertex_num);
-    A.coeffRef(0, GetMatrixVariablePos(vertex_num, v, 0)) = 1;
-    A.coeffRef(1, GetMatrixVariablePos(vertex_num, v, 1)) = 1;
-    A.coeffRef(2, GetMatrixVariablePos(vertex_num, v, 2)) = 1;
+    A.coeffRef(0, GetMatrixVariablePos(v, 0)) = 1;
+    A.coeffRef(1, GetMatrixVariablePos(v, 1)) = 1;
+    A.coeffRef(2, GetMatrixVariablePos(v, 2)) = 1;
     // Add A to M_.
     M_ = M_ + 2 * w * A.transpose() * A;
   }
@@ -265,9 +267,9 @@ void AdmmFreeSolver::SolveOneIteration() {
     // What is A?
     Eigen::SparseMatrix<double> A;
     A.resize(3, 4 * vertex_num);
-    A.coeffRef(0, GetMatrixVariablePos(vertex_num, v, 0)) = 1;
-    A.coeffRef(1, GetMatrixVariablePos(vertex_num, v, 1)) = 1;
-    A.coeffRef(2, GetMatrixVariablePos(vertex_num, v, 2)) = 1;
+    A.coeffRef(0, GetMatrixVariablePos(v, 0)) = 1;
+    A.coeffRef(1, GetMatrixVariablePos(v, 1)) = 1;
+    A.coeffRef(2, GetMatrixVariablePos(v, 2)) = 1;
     // What is b?
     Eigen::Matrix3d B = (S_[v] - T_[v]).transpose();
     rhs += (2 * w * A.transpose() * B);
@@ -414,20 +416,16 @@ Energy AdmmFreeSolver::ComputeEnergy() const {
   }
 
   // Now it passes the indicator function, the energy should be finite.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   double total = 0.0;
-  int face_num = faces_.rows();
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
       double edge_energy = 0.0;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d vec = (vertices_updated_.row(first) -
-          vertices_updated_.row(second)).transpose() -
-          rotations_[first] * (vertices_.row(first) -
-          vertices_.row(second)).transpose();
+      Eigen::Vector3d vec = (vertices_updated_.row(i) -
+          vertices_updated_.row(j)).transpose() -
+          rotations_[i] * (vertices_.row(i) -
+          vertices_.row(j)).transpose();
       edge_energy = weight * vec.squaredNorm();
       total += edge_energy;
     }
@@ -525,21 +523,17 @@ bool AdmmFreeSolver::CheckLinearSolve() const {
 double AdmmFreeSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
     const std::vector<Eigen::Matrix3d> &rotations) const {
   // Compute the linear solve energy.
-  double energy = 0.0;
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  int face_num = faces_.rows();
   int vertex_num = vertices_.rows();
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
+  double energy = 0.0;
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
       double edge_energy = 0.0;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d vec = (vertices.row(first) -
-          vertices.row(second)).transpose() -
-          rotations[first] * (vertices_.row(first) -
-          vertices_.row(second)).transpose();
+      Eigen::Vector3d vec = (vertices_updated_.row(i) -
+          vertices_updated_.row(j)).transpose() -
+          rotations_[i] * (vertices_.row(i) -
+          vertices_.row(j)).transpose();
       edge_energy = weight * vec.squaredNorm();
       energy += edge_energy;
     }
