@@ -56,6 +56,17 @@ void AdmmFixedSolver::Precompute() {
     }
   }
 
+  // Compute neighbors.
+  neighbors_.resize(vertex_num, Neighbors());
+  for (int f = 0; f < face_num; ++f) {
+    for (int i = 0; i < 3; ++i) {
+      int first = faces_(f, index_map[i][0]);
+      int second = faces_(f, index_map[i][1]);
+      neighbors_[first][second] = second;
+      neighbors_[second][first] = first;
+    }
+  }
+
   // Compute the left matrix M_.
   // The dimension of M_ should be # of constraints by # of unknowns. i.e.,
   // (free_num + 3 * vertex_num) * (free_num + 3 * vertex_num).
@@ -78,59 +89,56 @@ void AdmmFixedSolver::Precompute() {
   for (int i = free_num; i < free_num + 3 * vertex_num; ++i) {
     M_.coeffRef(i, i) += rho_;
   }
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
       // Each edge is visited twice: i->j and j->i.
-      VertexType first_type = vertex_info_[first].type;
-      VertexType second_type = vertex_info_[second].type;
-      int first_pos = vertex_info_[first].pos;
-      int second_pos = vertex_info_[second].pos;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
-      if (first_type == VertexType::Free) {
-        // This term contributes to the gradient of first.
-        M_.coeffRef(first_pos, first_pos) += 2 * weight;
-        if (second_type == VertexType::Free) {
-          M_.coeffRef(first_pos, second_pos) -= 2 * weight;
+      VertexType i_type = vertex_info_[i].type;
+      VertexType j_type = vertex_info_[j].type;
+      int i_pos = vertex_info_[i].pos;
+      int j_pos = vertex_info_[j].pos;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d v = vertices_.row(i) - vertices_.row(j);
+      if (i_type == VertexType::Free) {
+        // This term contributes to the gradient of i.
+        M_.coeffRef(i_pos, i_pos) += 2 * weight;
+        if (j_type == VertexType::Free) {
+          M_.coeffRef(i_pos, j_pos) -= 2 * weight;
         }
-        for (int i = 0; i < 3; ++i) {
-          M_.coeffRef(first_pos, GetMatrixVariablePos(first, i))
-            -= 2 * weight * v(i);
+        for (int k = 0; k < 3; ++k) {
+          M_.coeffRef(i_pos, GetMatrixVariablePos(i, k))
+            -= 2 * weight * v(k);
         }
       }
-      if (second_type == VertexType::Free) {
-        // This term contributes to the gradient of second.
-        M_.coeffRef(second_pos, second_pos) += 2 * weight;
-        if (first_type == VertexType::Free) {
-          M_.coeffRef(second_pos, first_pos) -= 2 * weight;
+      if (j_type == VertexType::Free) {
+        // This term contributes to the gradient of j.
+        M_.coeffRef(j_pos, j_pos) += 2 * weight;
+        if (i_type == VertexType::Free) {
+          M_.coeffRef(j_pos, i_pos) -= 2 * weight;
         }
-        for (int i = 0; i < 3; ++i) {
-          M_.coeffRef(second_pos, GetMatrixVariablePos(first, i))
-            += 2 * weight * v(i);
+        for (int k = 0; k < 3; ++k) {
+          M_.coeffRef(j_pos, GetMatrixVariablePos(i, k))
+            += 2 * weight * v(k);
         }
       }
       // This term also contributes to R_first.
       Eigen::Matrix3d m = v * v.transpose() * weight * 2;
-      for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-          M_.coeffRef(free_num + 3 * first + i, free_num + 3 * first + j)
-            += m(i, j);
+      for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+          M_.coeffRef(GetMatrixVariablePos(i, r), GetMatrixVariablePos(i, c))
+            += m(r, c);
         }
       }
-      if (first_type == VertexType::Free) {
-        for (int i = 0; i < 3; ++i) {
-          double val = weight * 2 * v(i);
-          M_.coeffRef(GetMatrixVariablePos(first, i), first_pos) -= val;
+      if (i_type == VertexType::Free) {
+        for (int k = 0; k < 3; ++k) {
+          double val = weight * 2 * v(k);
+          M_.coeffRef(GetMatrixVariablePos(i, k), i_pos) -= val;
         }
       }
-      if (second_type == VertexType::Free) {
-        for (int i = 0; i < 3; ++i) {
-          double val = weight * 2 * v(i);
-          M_.coeffRef(GetMatrixVariablePos(first, i), second_pos) += val;
+      if (j_type == VertexType::Free) {
+        for (int k = 0; k < 3; ++k) {
+          double val = weight * 2 * v(k);
+          M_.coeffRef(GetMatrixVariablePos(i, k), j_pos) += val;
         }
       }
     }
@@ -148,34 +156,30 @@ void AdmmFixedSolver::Precompute() {
 #ifdef USE_LINEAR_SOLVE_2
   // Start of the second method.
   M_.resize(free_num + 3 * vertex_num, free_num + 3 * vertex_num);
-  // Loop over all the edges.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
-      // Check the type of first and second.
-      VertexType first_type = vertex_info_[first].type;
-      VertexType second_type = vertex_info_[second].type;
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      // Check the type of i and j.
+      VertexType i_type = vertex_info_[i].type;
+      VertexType j_type = vertex_info_[j].type;
       // What is p_1 - p_2?
-      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
+      Eigen::Vector3d v = vertices_.row(i) - vertices_.row(j);
       // What is the weight?
-      double weight = weight_.coeff(first, second);
+      double weight = weight_.coeff(i, j);
       // What is the dimension of A?
       // A is a one line sparse row vector!
       Eigen::SparseMatrix<double> A;
       A.resize(1, free_num + 3 * vertex_num);
       // Compute A.
-      if (first_type == VertexType::Free) {
-        A.coeffRef(0, vertex_info_[first].pos) = 1;
+      if (i_type == VertexType::Free) {
+        A.coeffRef(0, vertex_info_[i].pos) = 1;
       }
-      if (second_type == VertexType::Free) {
-        A.coeffRef(0, vertex_info_[second].pos) = -1;
+      if (j_type == VertexType::Free) {
+        A.coeffRef(0, vertex_info_[j].pos) = -1;
       }
-      A.coeffRef(0, GetMatrixVariablePos(first, 0)) = -v(0);
-      A.coeffRef(0, GetMatrixVariablePos(first, 1)) = -v(1);
-      A.coeffRef(0, GetMatrixVariablePos(first, 2)) = -v(2);
+      A.coeffRef(0, GetMatrixVariablePos(i, 0)) = -v(0);
+      A.coeffRef(0, GetMatrixVariablePos(i, 1)) = -v(1);
+      A.coeffRef(0, GetMatrixVariablePos(i, 2)) = -v(2);
       // Add A to M_.
       M_ = M_ + 2 * weight * A.transpose() * A;
     }
@@ -259,42 +263,39 @@ void AdmmFixedSolver::SolveOneIteration() {
     rhs.block<3, 3>(free_num + 3 * v, 0)
       = rho_ * (S_[v] - T_[v]).transpose();
   }
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
       // Each edge is visited twice: i->j and j->i.
-      VertexType first_type = vertex_info_[first].type;
-      VertexType second_type = vertex_info_[second].type;
-      int first_pos = vertex_info_[first].pos;
-      int second_pos = vertex_info_[second].pos;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
-      if (first_type == VertexType::Free && second_type == VertexType::Free) {
+      VertexType i_type = vertex_info_[i].type;
+      VertexType j_type = vertex_info_[j].type;
+      int i_pos = vertex_info_[i].pos;
+      int j_pos = vertex_info_[j].pos;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d v = vertices_.row(i) - vertices_.row(j);
+      if (i_type == VertexType::Free && j_type == VertexType::Free) {
         continue;
       }
-      if (first_type == VertexType::Free) {
-        // This term contributes to the first position.
-        // second_type == Fixed.
-        rhs.row(first_pos) += 2 * weight * vertices_updated_.row(second);
+      if (i_type == VertexType::Free) {
+        // This term contributes to the i position.
+        // j_type == Fixed.
+        rhs.row(i_pos) += 2 * weight * vertices_updated_.row(j);
       }
-      if (second_type == VertexType::Free) {
-        // This term contributes to the second position.
-        // first_type == Fixed.
-        rhs.row(second_pos) += 2 * weight * vertices_updated_.row(first);
+      if (j_type == VertexType::Free) {
+        // This term contributes to the j position.
+        // i_type == Fixed.
+        rhs.row(j_pos) += 2 * weight * vertices_updated_.row(i);
       }
-      // This term also contributes to the gradient of R_first.
+      // This term also contributes to the gradient of R_i.
       Eigen::Vector3d b = Eigen::Vector3d::Zero();
-      if (first_type == VertexType::Fixed) {
-        b += vertices_updated_.row(first);
+      if (i_type == VertexType::Fixed) {
+        b += vertices_updated_.row(i);
       }
-      if (second_type == VertexType::Fixed) {
-        b -= vertices_updated_.row(second);
+      if (j_type == VertexType::Fixed) {
+        b -= vertices_updated_.row(j);
       }
       Eigen::Matrix3d m = v * b.transpose() * 2 * weight;
-      rhs.block<3, 3>(GetMatrixVariablePos(first, 0), 0) += m;
+      rhs.block<3, 3>(GetMatrixVariablePos(i, 0), 0) += m;
     }
   }
   // End of Method 1. ***/
@@ -306,41 +307,37 @@ void AdmmFixedSolver::SolveOneIteration() {
   // f(x) = w||Ax-b||^2:
   // (\sum 2wA'A)x = \sum 2wA'b
   // Add edge term.
-  // Loop over all the edges.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
-      // Check the type of first and second.
-      VertexType first_type = vertex_info_[first].type;
-      VertexType second_type = vertex_info_[second].type;
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      // Check the type of i and second.
+      VertexType i_type = vertex_info_[i].type;
+      VertexType j_type = vertex_info_[j].type;
       // What is p_1 - p_2?
-      Eigen::Vector3d v = vertices_.row(first) - vertices_.row(second);
+      Eigen::Vector3d v = vertices_.row(i) - vertices_.row(j);
       // What is the weight?
-      double weight = weight_.coeff(first, second);
+      double weight = weight_.coeff(i, j);
       // What is the dimension of A?
       // A is a one line sparse row vector!
       Eigen::SparseMatrix<double> A;
       A.resize(1, free_num + 3 * vertex_num);
       // Compute A.
-      if (first_type == VertexType::Free) {
-        A.coeffRef(0, vertex_info_[first].pos) = 1;
+      if (i_type == VertexType::Free) {
+        A.coeffRef(0, vertex_info_[i].pos) = 1;
       }
-      if (second_type == VertexType::Free) {
-        A.coeffRef(0, vertex_info_[second].pos) = -1;
+      if (j_type == VertexType::Free) {
+        A.coeffRef(0, vertex_info_[j].pos) = -1;
       }
-      A.coeffRef(0, GetMatrixVariablePos(first, 0)) = -v(0);
-      A.coeffRef(0, GetMatrixVariablePos(first, 1)) = -v(1);
-      A.coeffRef(0, GetMatrixVariablePos(first, 2)) = -v(2);
+      A.coeffRef(0, GetMatrixVariablePos(i, 0)) = -v(0);
+      A.coeffRef(0, GetMatrixVariablePos(i, 1)) = -v(1);
+      A.coeffRef(0, GetMatrixVariablePos(i, 2)) = -v(2);
       // What is the dimension of b?
       Eigen::Vector3d b = Eigen::Vector3d::Zero();
-      if (first_type == VertexType::Fixed) {
-        b -= vertices_updated_.row(first);
+      if (i_type == VertexType::Fixed) {
+        b -= vertices_updated_.row(i);
       }
-      if (second_type == VertexType::Fixed) {
-        b += vertices_updated_.row(second);
+      if (j_type == VertexType::Fixed) {
+        b += vertices_updated_.row(j);
       }
       rhs += 2 * weight * A.transpose() * b.transpose();
     }
@@ -483,20 +480,16 @@ Energy AdmmFixedSolver::ComputeEnergy() const {
   }
 
   // Now it passes the indicator function, the energy should be finite.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   double total = 0.0;
-  int face_num = faces_.rows();
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
       double edge_energy = 0.0;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d vec = (vertices_updated_.row(first) -
-          vertices_updated_.row(second)).transpose() -
-          rotations_[first] * (vertices_.row(first) -
-          vertices_.row(second)).transpose();
+      Eigen::Vector3d vec = (vertices_updated_.row(i) -
+          vertices_updated_.row(j)).transpose() -
+          rotations_[i] * (vertices_.row(i) -
+          vertices_.row(j)).transpose();
       edge_energy = weight * vec.squaredNorm();
       total += edge_energy;
     }
@@ -584,21 +577,17 @@ bool AdmmFixedSolver::CheckLinearSolve() const {
 double AdmmFixedSolver::ComputeLinearSolveEnergy(const Eigen::MatrixXd &vertices,
     const std::vector<Eigen::Matrix3d> &rotations) const {
   // Compute the linear solve energy.
-  double energy = 0.0;
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
-  int face_num = faces_.rows();
   int vertex_num = vertices_.rows();
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
+  double energy = 0.0;
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
       double edge_energy = 0.0;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d vec = (vertices.row(first) -
-          vertices.row(second)).transpose() -
-          rotations[first] * (vertices_.row(first) -
-          vertices_.row(second)).transpose();
+      Eigen::Vector3d vec = (vertices_updated_.row(i) -
+          vertices_updated_.row(j)).transpose() -
+          rotations_[i] * (vertices_.row(i) -
+          vertices_.row(j)).transpose();
       edge_energy = weight * vec.squaredNorm();
       energy += edge_energy;
     }
