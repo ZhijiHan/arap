@@ -56,8 +56,12 @@ static const Eigen::RowVector3d kGold(255.0 / 255.0,
 bool pre_draw(igl::Viewer& viewer) {
   static int iteration = 0;
   if (!viewer.core.is_animating
-    || iteration >= solver->GetMaxIteration())
+    || iteration >= solver->GetMaxIteration()) {
+    if (iteration >= solver->GetMaxIteration()) {
+      std::cout << "Reach max iterations." << std::endl;
+    }
     return false;
+  }
   solver->SolveOneIteration();
   arap::demo::Energy energy = solver->ComputeEnergy();
   std::cout << "Iteration: " << iteration << " Energy: " << energy;
