@@ -114,8 +114,6 @@ void ArapSolver::SolveOneIteration() {
   // A temporary vector to hold all the edge products for all the vertices.
   // This is the S matrix in equation (5).
   std::vector<Eigen::Matrix3d> edge_product;
-  // edge_map is used for looping over three edges in a triangle.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   // Step 1: solve rotations by polar_svd.
   // Clear edge_product.
   edge_product.clear();
@@ -199,20 +197,17 @@ Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {
 
 Energy ArapSolver::ComputeEnergy() const {
   // Compute the energy.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   double total = 0.0;
-  int face_num = faces_.rows();
-  for (int f = 0; f < face_num; ++f) {
-    // Loop over all the edges.
-    for (int e = 0; e < 3; ++e) {
-      int first = faces_(f, edge_map[e][0]);
-      int second = faces_(f, edge_map[e][1]);
+  int vertex_num = vertices_.rows();
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
       double edge_energy = 0.0;
-      double weight = weight_.coeff(first, second);
-      Eigen::Vector3d vec = (vertices_updated_.row(first) -
-          vertices_updated_.row(second)).transpose() -
-          rotations_[first] * (vertices_.row(first) -
-          vertices_.row(second)).transpose();
+      Eigen::Vector3d vec = (vertices_updated_.row(i) -
+          vertices_updated_.row(j)).transpose() -
+          rotations_[i] * (vertices_.row(i) -
+          vertices_.row(j)).transpose();
       edge_energy = weight * vec.squaredNorm();
       total += edge_energy;
     }

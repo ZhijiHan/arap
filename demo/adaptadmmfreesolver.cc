@@ -441,7 +441,6 @@ Energy AdaptAdmmFreeSolver::ComputeEnergy() const {
   }
 
   // Now it passes the indicator function, the energy should be finite.
-  int edge_map[3][2] = { {1, 2}, {2, 0}, {0, 1} };
   double total = 0.0;
   for (int i = 0; i < vertex_num; ++i) {
     for (auto& neighbor : neighbors_[i]) {
