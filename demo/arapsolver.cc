@@ -93,7 +93,7 @@ void ArapSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   // Initialize fixed_vertices_.
   fixed_vertices_ = fixed_vertices;
   // Initialized with vertices_. Note that this is different from the default
-  // setting in the ARAP demo, which uses the value from last from for
+  // setting in the ARAP demo, which uses the value from last frame for
   // initialization.
   vertices_updated_ = vertices_;
   int fixed_num = fixed_.size();
