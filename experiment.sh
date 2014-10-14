@@ -7,7 +7,7 @@ MODEL_NAME=/$1
 for algorithm in admm-free adapt-admm-free admm-fixed adapt-admm-fixed
   do
     echo $algorithm
-    for rho in 1 2 5 10 20 50
+    for rho in 0.01 0.02 0.05 0.1 0.2 0.5
       do
         echo $rho
         ./build/demo_bin $MODEL_FOLDER$MODEL_NAME $algorithm 100 $rho > $DATA_FOLDER$MODEL_NAME-$algorithm-$rho.txt

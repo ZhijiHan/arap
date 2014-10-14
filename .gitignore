@@ -18,3 +18,6 @@ model/*
 
 # Data file
 data/*
+
+# Bash
+./experiment.sh
