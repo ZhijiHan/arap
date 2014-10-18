@@ -10,6 +10,8 @@
 namespace arap {
 namespace demo {
 
+const double kMatrixDiffThreshold = 1e-6;
+
 ArapSolver::ArapSolver(const Eigen::MatrixXd& vertices,
     const Eigen::MatrixXi& faces, const Eigen::VectorXi& fixed,
     int max_iteration)
@@ -85,25 +87,89 @@ void ArapSolver::Precompute() {
   if (solver_.info() != Eigen::Success) {
     // Failed to decompose lb_operator_.
     std::cout << "Fail to do LU factorization." << std::endl;
-    return;
+    exit(EXIT_FAILURE);
   }
 }
 
 void ArapSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   // Initialize fixed_vertices_.
   fixed_vertices_ = fixed_vertices;
-  // Initialized with vertices_. Note that this is different from the default
-  // setting in the ARAP demo, which uses the value from last frame for
-  // initialization.
-  vertices_updated_ = vertices_;
+
+  // Initialize vertices_updated_ with Naive Laplacian editing. This method
+  // tries to minimize ||Lp' - Lp||^2 with fixed vertices constraints.
+  // Get all the dimensions.
+  int vertex_num = vertices_.rows();
   int fixed_num = fixed_.size();
+  int free_num = free_.size();
+  int dims = vertices_.cols();
+  // Initialize vertices_updated_.
+  vertices_updated_.resize(vertex_num, dims);
+
+  // Note that L = -weight_.
+  // Denote y to be the fixed vertices:
+  // ||Lp' - Lp|| => ||-Ax - By - Lp|| => ||Ax - (-By + weight_ * p)||
+  // => A'Ax = A'(-By + weight_ * p).
+  // Build A and B first.
+  Eigen::SparseMatrix<double> A, B;
+  Eigen::VectorXi r;
+  igl::colon<int>(0, vertices_.rows() - 1, r);
+  igl::slice(weight_, r, free_, A);
+  igl::slice(weight_, r, fixed_, B);
+
+  // Build A' * A.
+  Eigen::SparseLU<Eigen::SparseMatrix<double>> naive_lap_solver;
+  Eigen::SparseMatrix<double> left = A.transpose() * A;
+  left.makeCompressed();
+  naive_lap_solver.compute(left);
+  if (naive_lap_solver.info() != Eigen::Success) {
+    std::cout << "Fail to decompose naive Laplacian function." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  // Build A' * (-By + weight_ * p).
+  for (int c = 0; c < dims; ++c) {
+    Eigen::VectorXd b = weight_ * vertices_.col(c) - B * fixed_vertices_.col(c);
+    Eigen::VectorXd right = A.transpose() * b;
+    Eigen::VectorXd x = naive_lap_solver.solve(right);
+    if (naive_lap_solver.info() != Eigen::Success) {
+      std::cout << "Fail to solve naive Laplacian function." << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    // Sanity check the solution.
+    if ((left * x - right).squaredNorm() > kMatrixDiffThreshold) {
+      std::cout << "Wrong in the naive Laplacian solver." << std::endl;
+      return;
+    }
+    // Write back the solution.
+    for (int i = 0; i < free_num; ++i) {
+      vertices_updated_(free_(i), c) = x(i);
+    }
+  }
+
+  // Write back fixed vertices constraints.
   for (int i = 0; i < fixed_num; ++i) {
     vertices_updated_.row(fixed_(i)) = fixed_vertices_.row(i);
   }
-  // Initialize rotations_ with Identity matrices.
+
+  // Initialize rotations_ with vertices_updated_.
+  std::vector<Eigen::Matrix3d> edge_product(vertex_num,
+      Eigen::Matrix3d::Zero());
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d edge = vertices_.row(i) - vertices_.row(j);
+      Eigen::Vector3d edge_update =
+        vertices_updated_.row(i) - vertices_updated_.row(j);
+      edge_product[i] += weight * edge * edge_update.transpose();
+    }
+  }
   rotations_.clear();
-  int vertex_num = vertices_.rows();
-  rotations_.resize(vertex_num, Eigen::Matrix3d::Identity());
+  for (int v = 0; v < vertex_num; ++v) {
+    Eigen::Matrix3d rotation;
+    igl::polar_svd3x3(edge_product[v], rotation);
+    rotations_.push_back(rotation.transpose());
+  }
 }
 
 void ArapSolver::SolveOneIteration() {
@@ -156,7 +222,7 @@ void ArapSolver::SolveOneIteration() {
   Eigen::MatrixXd solution = solver_.solve(rhs);
   if (solver_.info() != Eigen::Success) {
     std::cout << "Fail to solve the sparse linear system." << std::endl;
-    return;
+    exit(EXIT_FAILURE);
   }
   for (int i = 0; i < free_num; ++i) {
     int pos = free_(i);

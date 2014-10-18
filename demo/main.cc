@@ -59,9 +59,16 @@ bool pre_draw(igl::Viewer& viewer) {
     || iteration >= solver->GetMaxIteration()) {
     return false;
   }
-  solver->SolveOneIteration();
+  // The first time when iteration == 0, we output the energy based on the
+  // initialized vertices_updated_ and rotations_. These values should be
+  // computed in SolvePreprocess, and should be the same for all the
+  // algorithms.
+  if (iteration > 0) {
+    solver->SolveOneIteration();
+  }
   arap::demo::Energy energy = solver->ComputeEnergy();
-  std::cout << "Iteration: " << iteration << " Energy: " << energy;
+  std::cout << "After " << iteration << " Iteration: "
+            << "Energy: " << energy;
   Eigen::MatrixXd solution = solver->GetVertexSolution();
   viewer.data.set_vertices(solution);
   viewer.data.set_points(bc, C);
