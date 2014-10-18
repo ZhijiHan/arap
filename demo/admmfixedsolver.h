@@ -1,9 +1,9 @@
 #ifndef _ARAP_DEMO_ADMMFIXEDSOLVER_H_
 #define _ARAP_DEMO_ADMMFIXEDSOLVER_H_
 
-#include "Eigen/CholmodSupport"
-
 #include "solver.h"
+
+#include "Eigen/SparseLU"
 
 namespace arap {
 namespace demo {
