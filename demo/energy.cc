@@ -34,5 +34,15 @@ double Energy::GetEnergyValue(const std::string type) const {
   return 0.0;
 }
 
+// Get all the energy names.
+std::vector<std::string> Energy::GetEnergyTypes() const {
+  std::vector<std::string> types;
+  for (EnergyMap::const_iterator it = energy_map_.begin();
+      it != energy_map_.end(); ++it) {
+    types.push_back(it->first);
+  }
+  return types;
+}
+
 }  // namespace demo
 }  // namespace arap

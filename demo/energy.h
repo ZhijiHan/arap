@@ -1,9 +1,10 @@
 #ifndef _ARAP_DEMO_ENERGY_H_
 #define _ARAP_DEMO_ENERGY_H_
 
-#include <map>
 #include <iostream>
+#include <map>
 #include <string>
+#include <vector>
 
 namespace arap {
 namespace demo {
@@ -27,6 +28,9 @@ class Energy {
 
   // Returns the value corresponds to the given type.
   double GetEnergyValue(const std::string type) const;
+
+  // Get all the energy names.
+  std::vector<std::string> GetEnergyTypes() const;
 
  private:
   // Maps energy type name and value.

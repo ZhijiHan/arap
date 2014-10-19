@@ -25,6 +25,8 @@ class AdaptAdmmFixedSolver : public Solver {
   // Given all the current data members, compute the energy.
   Energy ComputeEnergy() const;
 
+  double GetRho() const { return rho_; }
+
  private:
   // A helper function to compute |matrix_id|'s |variable_id|-th variable's
   // position.

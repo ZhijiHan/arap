@@ -7,7 +7,10 @@
 
 // C++ standard library
 #include <algorithm>
+#include <fstream>
 #include <iostream>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <vector>
 
 #include <Eigen/Geometry>
@@ -44,6 +47,8 @@ double anim_t = 0.0;
 double anim_t_dir = 0.03;
 // Our own implementation of ARAP.
 arap::demo::Solver* solver = nullptr;
+// Collects data from the solver.
+std::ofstream output_file;
 
 // Color used to draw precomputed vertices.
 static const Eigen::RowVector3d kPurple(80.0 / 255.0,
@@ -53,8 +58,11 @@ static const Eigen::RowVector3d kGold(255.0 / 255.0,
                                       228.0 / 255.0,
                                       58.0 / 255.0);
 
+static const std::string kDataFolder = "/home/taodu/research/arap/data/";
+
 bool pre_draw(igl::Viewer& viewer) {
   static int iteration = 0;
+  static Eigen::MatrixXd last_solution = V;
   if (!viewer.core.is_animating
     || iteration >= solver->GetMaxIteration()) {
     return false;
@@ -63,13 +71,39 @@ bool pre_draw(igl::Viewer& viewer) {
   // initialized vertices_updated_ and rotations_. These values should be
   // computed in SolvePreprocess, and should be the same for all the
   // algorithms.
-  if (iteration > 0) {
+  arap::demo::Energy energy;
+  if (iteration == 0) {
+    // Get energy types.
+    output_file << "iteration\trho\txnorm\txdiffnorm\t";
+    energy = solver->ComputeEnergy();
+    std::vector<std::string> types = energy.GetEnergyTypes();
+    for (auto it = types.begin(); it != types.end(); ++it) {
+      output_file << *it << '\t';
+    }
+    output_file << '\n';
+  } else {
     solver->SolveOneIteration();
+    energy = solver->ComputeEnergy();
   }
-  arap::demo::Energy energy = solver->ComputeEnergy();
-  std::cout << "After " << iteration << " Iteration: "
-            << "Energy: " << energy;
-  Eigen::MatrixXd solution = solver->GetVertexSolution();
+  double rho = solver->GetRho();
+  const Eigen::MatrixXd solution = solver->GetVertexSolution();
+  double solution_diff_norm = (last_solution - solution).norm();
+  last_solution = solution;
+  std::cout << "After " << iteration << " Iteration:"
+            << " rho: " << rho
+            << " x norm: " << solution.norm()
+            << " x diff norm: " << solution_diff_norm
+            << " Energy: " << energy;
+  // Write energy back into output data file.
+  output_file << iteration << '\t' << rho << '\t'
+              << solution.norm() << '\t'
+              << solution_diff_norm << '\t';
+  std::vector<std::string> types = energy.GetEnergyTypes();
+  for (auto it = types.begin(); it != types.end(); ++it) {
+    output_file << energy.GetEnergyValue(*it) << '\t';
+  }
+  output_file << '\n';
+
   viewer.data.set_vertices(solution);
   viewer.data.set_points(bc, C);
   viewer.data.compute_normals();
@@ -88,6 +122,7 @@ bool key_down(igl::Viewer& viewer, unsigned char key, int mods) {
 }
 
 // Usage: ./demo_bin [model file name] [algorithm name] [iteration number] [rho]
+// The program will generate data files under the folder kDataFolder.
 int main(int argc, char *argv[]) {
   if (argc < 4) {
     std::cout << "Not enough input parameters." << std::endl
@@ -96,15 +131,23 @@ int main(int argc, char *argv[]) {
                  "[rho]" << std::endl;
     return 0;
   }
-  std::string model_name = std::string(argv[1]);
+  std::string model_path = std::string(argv[1]);
+  // Get the model name.
+  int found = static_cast<int>(model_path.find_last_of("/"));
+  std::string model_name = model_path.substr(found + 1);
+  std::cout << "model name: " << model_name << std::endl;
+  // Build folders under kDataFolder.
+  mkdir((kDataFolder + model_name).c_str(), S_IRWXU | S_IRWXG |
+        S_IROTH | S_IXOTH);
+
   // Read V and F from file.
-  igl::readOFF(model_name + ".off", V, F);
+  igl::readOFF(model_path + ".off", V, F);
   // U is initialized with V and gets updated in every frame. V will be the
   // initial state of vertices during the animation.
   U = V;
 
   // Read S from file. See comments about S above.
-  igl::readDMAT(model_name + "-selection.dmat", S);
+  igl::readDMAT(model_path + "-selection.dmat", S);
   // This works the same as the Matlab code: b = 0 : V.rows() - 1.
   igl::colon<int>(0, V.rows() - 1, b);
   // stable_partition will partition b such that elements with S(i) >= 0 are in
@@ -121,7 +164,7 @@ int main(int argc, char *argv[]) {
   b.conservativeResize(std::stable_partition(b.data(), b.data() + b.size(),
     [](int i)->bool { return S(i) >= 0; }) - b.data());
   // Compute the fixed vertices.
-  igl::readDMAT(model_name + ".dmat", bc);
+  igl::readDMAT(model_path + ".dmat", bc);
 
   // Parse the algorithm name.
   std::string algorithm(argv[2]);
@@ -153,6 +196,17 @@ int main(int argc, char *argv[]) {
     std::cout << "Use ArapBenchmarkSolver." << std::endl;
     solver = new arap::demo::ArapBenchmarkSolver(V, F, b, iter_num);
   }
+
+  // Build output data file name.
+  std::string output_file_path = kDataFolder + model_name + "/"
+      + algorithm + "-"  // algorithm name.
+      + std::string(argv[3]);  // iteration number.
+  // If algorithm is admm, add rho into the file name.
+  if (algorithm != "arap") {
+    output_file_path += "-" + std::string(argv[4]);  // rho.
+  }
+  std::cout << "output file path: " << output_file_path << std::endl;
+  output_file.open(output_file_path);
 
   solver->Precompute();
   // Prepare to solve the problem.

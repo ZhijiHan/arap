@@ -237,7 +237,7 @@ void AdaptAdmmFixedSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices
     // Sanity check the solution.
     if ((left * x - right).squaredNorm() > kMatrixDiffThreshold) {
       std::cout << "Wrong in the naive Laplacian solver." << std::endl;
-      return;
+      exit(EXIT_FAILURE);
     }
     // Write back the solution.
     for (int i = 0; i < free_num; ++i) {
@@ -518,7 +518,6 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
   } else if (dual_residual > primal_residual * kMu * kMu) {
     rho_ /= kDecreTau;
   }
-  std::cout << "rho = " << rho_ << std::endl;
 }
 
 Eigen::Vector3d AdaptAdmmFixedSolver::ComputeCotangent(int face_id) const {

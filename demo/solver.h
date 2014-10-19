@@ -73,6 +73,9 @@ class Solver {
   // Given all the current data members, compute the energy.
   virtual Energy ComputeEnergy() const = 0;
 
+  // Get rho value, mainly used for admm solvers.
+  virtual double GetRho() const { return 0.0; }
+
  protected:
   // vertices_ is a # of vertices by 3 matrix. Each row in vertices_ represents
   // a vertex's position.
