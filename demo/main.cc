@@ -74,11 +74,11 @@ bool pre_draw(igl::Viewer& viewer) {
   arap::demo::Energy energy;
   if (iteration == 0) {
     // Get energy types.
-    output_file << "iteration\trho\txnorm\txdiffnorm\t";
+    output_file << "iteration\trho\txnorm\txdiffnorm";
     energy = solver->ComputeEnergy();
     std::vector<std::string> types = energy.GetEnergyTypes();
     for (auto it = types.begin(); it != types.end(); ++it) {
-      output_file << *it << '\t';
+      output_file << '\t' << *it;
     }
     output_file << '\n';
   } else {
@@ -97,10 +97,10 @@ bool pre_draw(igl::Viewer& viewer) {
   // Write energy back into output data file.
   output_file << iteration << '\t' << rho << '\t'
               << solution.norm() << '\t'
-              << solution_diff_norm << '\t';
+              << solution_diff_norm;
   std::vector<std::string> types = energy.GetEnergyTypes();
   for (auto it = types.begin(); it != types.end(); ++it) {
-    output_file << energy.GetEnergyValue(*it) << '\t';
+    output_file << '\t' << energy.GetEnergyValue(*it);
   }
   output_file << '\n';
 
@@ -205,6 +205,7 @@ int main(int argc, char *argv[]) {
   if (algorithm != "arap") {
     output_file_path += "-" + std::string(argv[4]);  // rho.
   }
+  output_file_path += ".txt";
   std::cout << "output file path: " << output_file_path << std::endl;
   output_file.open(output_file_path);
 
