@@ -236,5 +236,6 @@ int main(int argc, char *argv[]) {
   viewer.core.animation_max_fps = 30.;
   std::cout << "Press [space] to toggle animation" << std::endl;
   viewer.launch();
+  delete solver;
   return 0;
 }

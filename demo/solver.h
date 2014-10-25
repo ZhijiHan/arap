@@ -41,6 +41,8 @@ class Solver {
   Solver(const Eigen::MatrixXd& vertices, const Eigen::MatrixXi& faces,
       const Eigen::VectorXi& fixed, int max_iteration);
 
+  virtual ~Solver() {}
+
   // Precomputes and caches necessary variables for the algorithm.
   virtual void Precompute() = 0;
 
