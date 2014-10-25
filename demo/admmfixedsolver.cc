@@ -562,6 +562,7 @@ Energy AdmmFixedSolver::ComputeEnergy() const {
   for (int i = 0; i < vertex_num; ++i) {
     rotation_aug_energy += (rotations_[i] - S_[i]).squaredNorm();
   }
+  energy.AddEnergyType("RotationAvg", rotation_aug_energy / vertex_num);
   rotation_aug_energy *= half_rho;
   total += rotation_aug_energy;
   energy.AddEnergyType("Rotation", rotation_aug_energy);

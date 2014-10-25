@@ -528,6 +528,7 @@ Energy AdaptAdmmFreeSolver::ComputeEnergy() const {
   for (int i = 0; i < vertex_num; ++i) {
     rotation_aug_energy += (rotations_[i] - S_[i]).squaredNorm();
   }
+  energy.AddEnergyType("RotationAvg", rotation_aug_energy / vertex_num);
   rotation_aug_energy *= half_rho;
   total += rotation_aug_energy;
   energy.AddEnergyType("Rotation", rotation_aug_energy);
@@ -538,6 +539,7 @@ Energy AdaptAdmmFreeSolver::ComputeEnergy() const {
     vertex_aug_energy += (vertices_updated_.row(fixed_(i))
       - fixed_vertices_.row(i)).squaredNorm();
   }
+  energy.AddEnergyType("VertexAvg", vertex_aug_energy / fixed_num);
   vertex_aug_energy *= half_rho;
   total += vertex_aug_energy;
   energy.AddEnergyType("Vertex", vertex_aug_energy);
