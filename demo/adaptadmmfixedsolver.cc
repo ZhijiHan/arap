@@ -586,10 +586,13 @@ Energy AdaptAdmmFixedSolver::ComputeEnergy() const {
   // Add augmented term.
   double half_rho = rho_ / 2;
   double rotation_aug_energy = 0.0;
+  double rotation_error_rate = 0.0;
   for (int i = 0; i < vertex_num; ++i) {
-    rotation_aug_energy += (rotations_[i] - S_[i]).squaredNorm();
+    double diff_sq_norm = (rotations_[i] - S_[i]).squaredNorm();
+    rotation_aug_energy += diff_sq_norm;
+    rotation_error_rate += sqrt(diff_sq_norm) / S_[i].norm();
   }
-  energy.AddEnergyType("RotationAvg", rotation_aug_energy / vertex_num);
+  energy.AddEnergyType("RotationAvg", rotation_error_rate / vertex_num);
   rotation_aug_energy *= half_rho;
   total += rotation_aug_energy;
   energy.AddEnergyType("Rotation", rotation_aug_energy);
