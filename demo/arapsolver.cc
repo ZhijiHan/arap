@@ -230,6 +230,11 @@ void ArapSolver::SolveOneIteration() {
   }
 }
 
+void ArapSolver::SolvePostprocess() {
+  // Simply do nothing.
+  return;
+}
+
 Eigen::Vector3d ArapSolver::ComputeCotangent(int face_id) const {
   Eigen::Vector3d cotangent(0.0, 0.0, 0.0);
   // The triangle is defined as follows:

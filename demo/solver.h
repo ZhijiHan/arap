@@ -55,6 +55,7 @@ class Solver {
   //   SolveOneIteration();
   //   ++iter;
   // }
+  // SolvePostprocess();
   // or you can implement your own version too.
   virtual void Solve(const Eigen::MatrixXd& fixed_vertices);
 
@@ -62,6 +63,8 @@ class Solver {
   virtual void SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) = 0;
   // Solves for one iteration. This function helps us analyse the algorithm.
   virtual void SolveOneIteration() = 0;
+  // Used for postprocessing after all the iterations are done.
+  virtual void SolvePostprocess() = 0;
 
   // Gets vertices_updated_.
   const Eigen::MatrixXd& GetVertexSolution() const;

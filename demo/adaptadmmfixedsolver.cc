@@ -520,6 +520,10 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
   }
 }
 
+void AdaptAdmmFixedSolver::SolvePostprocess() {
+  // TODO.
+}
+
 Eigen::Vector3d AdaptAdmmFixedSolver::ComputeCotangent(int face_id) const {
   Eigen::Vector3d cotangent(0.0, 0.0, 0.0);
   // The triangle is defined as follows:

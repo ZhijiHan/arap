@@ -459,6 +459,10 @@ void AdaptAdmmFreeSolver::SolveOneIteration() {
   }
 }
 
+void AdaptAdmmFreeSolver::SolvePostprocess() {
+  // TODO.
+}
+
 Eigen::Vector3d AdaptAdmmFreeSolver::ComputeCotangent(int face_id) const {
   Eigen::Vector3d cotangent(0.0, 0.0, 0.0);
   // The triangle is defined as follows:

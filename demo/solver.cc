@@ -83,6 +83,7 @@ void Solver::Solve(const Eigen::MatrixXd& fixed_vertices) {
     SolveOneIteration();
     ++iter;
   }
+  SolvePostprocess();
 }
 
 }  // namespace demo

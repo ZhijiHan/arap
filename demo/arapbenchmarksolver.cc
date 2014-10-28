@@ -33,6 +33,10 @@ void ArapBenchmarkSolver::SolveOneIteration() {
   // We don't want to expose all the inner states of libigl's implementation.
 }
 
+void ArapBenchmarkSolver::SolvePostprocess() {
+  // Do nothing here.
+}
+
 Energy ArapBenchmarkSolver::ComputeEnergy() const {
   return Energy();
 }

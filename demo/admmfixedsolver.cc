@@ -493,6 +493,10 @@ void AdmmFixedSolver::SolveOneIteration() {
   }
 }
 
+void AdmmFixedSolver::SolvePostprocess() {
+  // TODO.
+}
+
 Eigen::Vector3d AdmmFixedSolver::ComputeCotangent(int face_id) const {
   Eigen::Vector3d cotangent(0.0, 0.0, 0.0);
   // The triangle is defined as follows:

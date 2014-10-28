@@ -64,7 +64,7 @@ bool pre_draw(igl::Viewer& viewer) {
   static int iteration = 0;
   static Eigen::MatrixXd last_solution = V;
   if (!viewer.core.is_animating
-    || iteration >= solver->GetMaxIteration()) {
+    || iteration > solver->GetMaxIteration()) {
     return false;
   }
   // The first time when iteration == 0, we output the energy based on the
@@ -81,8 +81,12 @@ bool pre_draw(igl::Viewer& viewer) {
       output_file << '\t' << *it;
     }
     output_file << '\n';
-  } else {
+  } else if (iteration < solver->GetMaxIteration()){
     solver->SolveOneIteration();
+    energy = solver->ComputeEnergy();
+  } else {
+    // iteration == solver->GetMaxIteration().
+    solver->SolvePostprocess();
     energy = solver->ComputeEnergy();
   }
   double rho = solver->GetRho();

@@ -21,6 +21,8 @@ class ArapBenchmarkSolver : public Solver {
   void SolvePreprocess(const Eigen::MatrixXd& fixed_vertices);
   // Solves for one iteration. This function helps us analyse the algorithm.
   void SolveOneIteration();
+  // Do post process after all the iterations are done.
+  void SolvePostprocess();
 
   Energy ComputeEnergy() const;
 
