@@ -146,6 +146,18 @@ int main(int argc, char *argv[]) {
 
   // Read V and F from file.
   igl::readOFF(model_path + ".off", V, F);
+  // Compute the center of mass.
+  Eigen::Vector3d center = Eigen::Vector3d::Zero();
+  int vertex_num = V.rows();
+  for (int v = 0; v < vertex_num; ++v) {
+    center += V.row(v);
+  }
+  center /= vertex_num;
+  // Shift the object so that center is at the origin.
+  for (int v = 0; v < vertex_num; ++v) {
+    V.row(v) -= center;
+  }
+
   // U is initialized with V and gets updated in every frame. V will be the
   // initial state of vertices during the animation.
   U = V;
@@ -169,6 +181,10 @@ int main(int argc, char *argv[]) {
     [](int i)->bool { return S(i) >= 0; }) - b.data());
   // Compute the fixed vertices.
   igl::readDMAT(model_path + ".dmat", bc);
+  int fixed_num = bc.rows();
+  for (int v = 0; v < fixed_num; ++v) {
+    bc.row(v) -= center;
+  }
 
   // Parse the algorithm name.
   std::string algorithm(argv[2]);
