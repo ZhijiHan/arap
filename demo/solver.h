@@ -81,6 +81,25 @@ class Solver {
   // Get rho value, mainly used for admm solvers.
   virtual double GetRho() const { return 0.0; }
 
+  // Some very useful helper functions.
+  // RefineRotations will do SVD projection based on given vertices_,
+  // vertices_updated_ and weight_. It will overwrite rotations_. After calling
+  // this, the rotation constraints are enforced.
+  // The typical use can be:
+  // step 0: call ComputeEnergy to get current energy;
+  // step 1: cache the current rotations_;
+  // step 2: call RefineRotations;
+  // step 3: call ComputeEnergy to update rotations_;
+  // step 4: if the updated energy is larger, reset rotations_.
+  void RefineRotations();
+
+  // RefineVertices will update vertices_updated_ based on given rotations_,
+  // fixed_vertices_, vertices_ and weight_. It will overwrite
+  // vertices_updated_. After calling this, the fixed vertex constraints are
+  // enforced.
+  void RefineVertices();
+
+
  protected:
   // vertices_ is a # of vertices by 3 matrix. Each row in vertices_ represents
   // a vertex's position.

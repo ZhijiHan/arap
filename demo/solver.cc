@@ -86,5 +86,88 @@ void Solver::Solve(const Eigen::MatrixXd& fixed_vertices) {
   SolvePostprocess();
 }
 
+// RefineRotations will do SVD projection based on given vertices_,
+// vertices_updated_ and weight_. It will overwrite rotations_. After calling
+// this, the rotation constraints are enforced.
+// The typical use can be:
+// step 0: call ComputeEnergy to get current energy;
+// step 1: cache the current rotations_;
+// step 2: call RefineRotations;
+// step 3: call ComputeEnergy to update rotations_;
+// step 4: if the updated energy is larger, reset rotations_.
+void Solver::RefineRotations() {
+  int vertex_num = vertices_.rows();
+  std::vector<Eigen::Matrix3d> edge_product(vertex_num, Eigen::Matrix3d::Zero());
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d edge = vertices_.row(i) - vertices_.row(j);
+      Eigen::Vector3d edge_update =
+        vertices_updated_.row(i) - vertices_updated_.row(j);
+      edge_product[i] += weight * edge * edge_update.transpose();
+    }
+  }
+  for (int v = 0; v < vertex_num; ++v) {
+    Eigen::Matrix3d rotation;
+    igl::polar_svd3x3(edge_product[v], rotation);
+    rotations_[v] = rotation.transpose();
+  }
+}
+
+// RefineVertices will update vertices_updated_ based on given rotations_,
+// fixed_vertices_, vertices_ and weight_. It will overwrite
+// vertices_updated_. After calling this, the fixed vertex constraints are
+// enforced.
+void Solver::RefineVertices() {
+  int fixed_num = fixed_.size();
+  // Write back fixed vertices constraints.
+  for (int i = 0; i < fixed_num; ++i) {
+    vertices_updated_.row(fixed_(i)) = fixed_vertices_.row(i);
+  }
+  Eigen::SparseMatrix<double> lb_operator;
+  igl::slice(weight_, free_, free_, lb_operator);
+  lb_operator *= -1.0;
+  lb_operator.makeCompressed();
+
+  // LU factorization.
+  Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+  solver.compute(lb_operator);
+  if (solver.info() != Eigen::Success) {
+    // Failed to decompose lb_operator_.
+    std::cout << "Fail to do LU factorization." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  int free_num = free_.size();
+  // The right hand side of equation (9). The x, y and z coordinates are
+  // computed separately.
+  Eigen::MatrixXd rhs = Eigen::MatrixXd::Zero(free_num, 3);
+  for (int i = 0; i < free_num; ++i) {
+    int i_pos = free_(i);
+    for (auto& neighbor : neighbors_[i_pos]) {
+      int j_pos = neighbor.first;
+      double weight = weight_.coeff(i_pos, j_pos);
+      Eigen::Vector3d vec = weight / 2.0
+        * (rotations_[i_pos] + rotations_[j_pos])
+        * (vertices_.row(i_pos) - vertices_.row(j_pos)).transpose();
+      rhs.row(i) += vec;
+      if (vertex_info_[j_pos].type == VertexType::Fixed) {
+        rhs.row(i) += weight * vertices_updated_.row(j_pos);
+      }
+    }
+  }
+  // Solve for free_.
+  Eigen::MatrixXd solution = solver.solve(rhs);
+  if (solver.info() != Eigen::Success) {
+    std::cout << "Fail to solve the sparse linear system." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  for (int i = 0; i < free_num; ++i) {
+    int pos = free_(i);
+    vertices_updated_.row(pos) = solution.row(i);
+  }
+}
+
 }  // namespace demo
 }  // namespace arap
