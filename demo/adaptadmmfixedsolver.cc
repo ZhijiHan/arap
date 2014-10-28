@@ -521,7 +521,10 @@ void AdaptAdmmFixedSolver::SolveOneIteration() {
 }
 
 void AdaptAdmmFixedSolver::SolvePostprocess() {
-  // TODO.
+  // Overwrite rotations_ with S_.
+  rotations_ = S_;
+  // Refine vertices_updated_.
+  RefineVertices();
 }
 
 Eigen::Vector3d AdaptAdmmFixedSolver::ComputeCotangent(int face_id) const {

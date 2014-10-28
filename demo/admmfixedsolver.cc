@@ -494,7 +494,10 @@ void AdmmFixedSolver::SolveOneIteration() {
 }
 
 void AdmmFixedSolver::SolvePostprocess() {
-  // TODO.
+  // Overwrite rotations_ with S_.
+  rotations_ = S_;
+  // Refine vertices_udpated_.
+  RefineVertices();
 }
 
 Eigen::Vector3d AdmmFixedSolver::ComputeCotangent(int face_id) const {
