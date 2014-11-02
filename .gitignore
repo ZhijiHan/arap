@@ -1,6 +1,7 @@
 # Build folder.
 build/*
 demo/build/*
+figs/*
 
 # Object files.
 *.o
