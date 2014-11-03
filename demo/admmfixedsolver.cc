@@ -292,9 +292,40 @@ void AdmmFixedSolver::SolvePreprocess(const Eigen::MatrixXd& fixed_vertices) {
   // Initialize S_ with rotations_.
   S_ = rotations_;
 
+  // Initialize T_ with least square solution to the KKT condition.
+  // Problem:
+  // min. f(x)
+  // s.t. Ax = b
+  // KKT condition:
+  // Ax* = b
+  // \nabla f(x*) + A'y* = 0
+  // In our problem, A = [O | I | -I]
+  // x = [p | R | S]
+  // The normal equation:
+  // AA'y* = -A\nabla f(x*)
+  // y* = -0.5 \partial{f(x*)}{R}
+  // u* = (1/\rho)y* = -0.5/\rho * \partial{f(x*)}{R}
+
   // Initialize T_ with zero matrices.
   T_.clear();
   T_.resize(vertex_num, Eigen::Matrix3d::Zero());
+  // Compute the partial derivatives.
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d edge = vertices_.row(i) - vertices_.row(j);
+      Eigen::Vector3d edge_update =
+        vertices_updated_.row(i) - vertices_updated_.row(j);
+      T_[i] += -2 * weight * (edge_update - rotations_[i] * edge) *
+              edge.transpose();
+    }
+  }
+  // Scale the partial derivatives.
+  double factor = -0.5 / rho_;
+  for (int v = 0; v < vertex_num; ++v) {
+    T_[v] *= factor;
+  }
 }
 
 void AdmmFixedSolver::SolveOneIteration() {
