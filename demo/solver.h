@@ -98,7 +98,32 @@ class Solver {
   // vertices_updated_. After calling this, the fixed vertex constraints are
   // enforced.
   void RefineVertices();
+  
+  // The next two functions will be extremely useful when we compute the
+  // gradient and possibly hessian of ARAP energy. Implementation here only
+  // consider ARAP energy as a function of points and rotations independently.
+  // More advanced solvers can choose to override these functions, e.g., it may
+  // treat rotations as a function of points.
 
+  // The definition of ARAP energy:
+  // E = \sum_i \sum_j\in{neighbors_[i]} weight_(i, j)||p'_i - p'_j - R_i(p_i - p_j)||^2
+
+  // Given an index in p' and the dimension we are interested in (x, y, or z),
+  // returns the gradient w.r.t. it.
+  virtual double ComputePositionGradient(int point_index, int dim_index) const;
+
+  // Same above, but returns a vertex_num by 3 matrix for the gradients for all
+  // the points and all the dimensions.
+  virtual Eigen::MatrixXd ComputePositionGradient() const;
+
+  // Given an index of the rotation, the row and column we are interested in,
+  // returns the gradient w.r.t. it.
+  virtual double ComputeRotationGradient(int rotation_index,
+      int row_index, int col_index) const;
+
+  // Same above, but returns a (vertex_num x 3) by 3 matrix for all the
+  // gradient.
+  virtual Eigen::MatrixXd ComputeRotationGradient() const;
 
  protected:
   // vertices_ is a # of vertices by 3 matrix. Each row in vertices_ represents

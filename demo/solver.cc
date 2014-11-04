@@ -169,5 +169,100 @@ void Solver::RefineVertices() {
   }
 }
 
+// The definition of ARAP energy:
+// E = \sum_i \sum_j\in{neighbors_[i]} weight_(i, j)||p'_i - p'_j - R_i(p_i - p_j)||^2
+
+// The four functions below have not been tested. It is highly recommended NOT
+// to use them before full testing has been done!
+
+// Given an index in p' and the dimension we are interested in (x, y, or z),
+// returns the gradient w.r.t. it.
+double Solver::ComputePositionGradient(int point_index, int dim_index) const {
+  if (weight_.rows() == 0|| weight_.cols() == 0 || neighbors_.size() == 0) {
+    std::cout << "Uninitialized weight_ or neighbors_." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  double gradient = 0.0;
+  // Assume neighborhood relationship is symmetric.
+  int vertex_num = vertices_.rows();
+  int i = point_index;
+  for (auto& neighbor : neighbors_[point_index]) {
+    int j = neighbor.first;
+    double weight = weight_.coeff(i, j);
+    Eigen::Vector3d e = vertices_.row(i) - vertices_.row(j);
+    Eigen::Vector3d e_update = vertices_updated_.row(i) -
+        vertices_updated_.row(j); 
+    // Consider term weight * ||p'_i - p'_j - R_i(p_i - p_j)||^2
+    Eigen::Vector3d v = rotations_[i] * e; 
+    gradient += 2 * weight * (e_update(dim_index) - v(dim_index));
+    // Then, consider weight * ||p'_j - p'_i - R_j(p_j - p_i)||^2
+    weight = weight_.coeff(j, i);
+    v = rotations_[j] * (-e);
+    gradient += 2 * weight * (e_update(dim_index) + v(dim_index));
+  }
+  return gradient;
+}
+
+// Same above, but returns a vertex_num by 3 matrix for the gradients for all
+// the points and all the dimensions.
+Eigen::MatrixXd Solver::ComputePositionGradient() const {
+  if (weight_.rows() == 0|| weight_.cols() == 0 || neighbors_.size() == 0) {
+    std::cout << "Uninitialized weight_ or neighbors_." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  int vertex_num = vertices_.rows();
+  Eigen::MatrixXd gradient = Eigen::MatrixXd::Zero(vertex_num, 3);
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d e = vertices_.row(i) - vertices_.row(j);
+      Eigen::Vector3d e_update = vertices_updated_.row(i) -
+          vertices_updated_.row(j);
+      Eigen::Vector3d v = 2 * weight * (e_update - rotations_[i] * e);
+      gradient.row(i) += v;
+      gradient.row(j) -= v;
+    }
+  }
+  return gradient; 
+}
+
+// Given an index of the rotation, the row and column we are interested in,
+// returns the gradient w.r.t. it.
+double Solver::ComputeRotationGradient(int rotation_index,
+    int row_index, int col_index) const {
+  double gradient = 0.0;
+  int i = rotation_index;
+  for (auto& neighbor : neighbors_[i]) {
+    int j = neighbor.first;
+    double weight = weight_.coeff(i, j);
+    Eigen::Vector3d e = vertices_.row(i) - vertices_.row(j);
+    Eigen::Vector3d e_update = vertices_updated_.row(i) -
+        vertices_updated_.row(j);
+    Eigen::Vector3d v = 2 * weight * (e_update - rotations_[i] * e);
+    gradient += v(row_index) * (-e(col_index)); 
+  }
+  return gradient; 
+}
+
+// Same above, but returns a (vertex_num x 3) by 3 matrix for all the
+// gradient.
+Eigen::MatrixXd Solver::ComputeRotationGradient() const {
+  int vertex_num = vertices_.rows();
+  Eigen::MatrixXd gradient = Eigen::MatrixXd::Zero(vertex_num * 3, 3);
+  for (int i = 0; i < vertex_num; ++i) {
+    for (auto& neighbor : neighbors_[i]) {
+      int j = neighbor.first;
+      double weight = weight_.coeff(i, j);
+      Eigen::Vector3d e = vertices_.row(i) - vertices_.row(j);
+      Eigen::Vector3d e_update = vertices_updated_.row(i) -
+          vertices_updated_.row(j);
+      gradient.block<3, 3>(3 * i, 0) += 2 * weight *
+          (e_update - rotations_[i] * e) * (-e.transpose());
+    }
+  }
+  return gradient;
+}
+
 }  // namespace demo
 }  // namespace arap
