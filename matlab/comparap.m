@@ -36,7 +36,7 @@ function [ arap ] = comparap( V, V2, R, N, W )
     r = R(base + 1 : base + 3, :);
     
     % Add this edge into arap energy.
-    arap = arap + w * norm((vni - vnj)' - r * (voi - voj)') ^ 2;
+    arap = arap + compedge(w, vni, vnj, r, voi, voj);
   end
 end
 
