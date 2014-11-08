@@ -34,6 +34,9 @@ function [ V, F ] = readoff( filename )
   F = fscanf(f, '%f', [4, fnum]);
   F = F';
   
+  % Shift F by 1 because indices in matlab strat from 1.
+  F = F + 1;
+  
   % Filter out the first row in F: this column contains the number of
   % vertex in each row.
   F = F(:, 2 : end);
