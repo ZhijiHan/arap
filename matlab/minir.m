@@ -49,14 +49,10 @@ function [ R ] = minir( V, V2, N, W )
   for i = 1 : vnum
     % Compute the base index for vertex i.
     base = (i - 1) * 3;
-    [u, ~, v] = svd(E(base + 1 : base + 3, :));
-    r = v * u';
     
-    % If det(r) is negative, we flip the last column in u.
-    if det(r) < 0
-      u(:, end) = -1 * u(:, end);
-      r = v * u';
-    end
+    % Compute r by polar decomposition.
+    [r, ~] = polar(E(base + 1 : base + 3, :));
+    r = r';
     
     % Write r back to R.
     R(base + 1 : base + 3, :) = r;
