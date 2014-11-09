@@ -1,12 +1,10 @@
-function [ V2 ] = miniv( V, R, cid, C, N, W )
+function [ rhs ] = minivright( V, R, cid, C, N, W )
   % Tao Du
   % Nov 8, 2014
   
   % Given vertices, rotations, constrained vertices conditions,
-  % neighborhoods and weights, try to minimize new vertices.
-  % It is highly recommended to use this function only for one iteration.
-  % If you need to minimize vectors for multiple iterations, please
-  % consider using minivleft and minivright.
+  % neighborhoods and weights, try to compute the right hand side for 
+  % minimizing new vertices.
   
   % Get the number of vertices.
   vnum = size(V, 1);
@@ -18,9 +16,6 @@ function [ V2 ] = miniv( V, R, cid, C, N, W )
   % For each i:
   % \sum_{j\in N(i)} w_{ij}(p_i' - p_j') = \sum_{j\in N(i)}
   % w_{ij} / 2 * (R_i + R_j).
-  
-  % Compute the Laplacian operator.
-  L = -W(fid, fid);
   
   % Initialize the right hand side with fixed vertices
   rhs = W(fid, cid) * C;
@@ -49,14 +44,5 @@ function [ V2 ] = miniv( V, R, cid, C, N, W )
     end
     base = base + 1;
   end
-  
-  % Preallocate space for V2.
-  V2 = zeros(vnum, 3);
-  
-  % Write free solutions back to V2.
-  V2(fid, :) = L \ rhs;
-  
-  % Write constrained vertices back.
-  V2(cid, :) = C;
 end
 
