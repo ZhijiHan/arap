@@ -1,8 +1,10 @@
 % Tao Du
+% Nov 8, 2014
+
 % Testing the computation of derivatives in dvi, dvj and dr.
 
 % Initialize w, vni, vnj, r, voi, voj randomly.
-clc;
+clc; clear all;
 w = rand();
 vni = rand(3, 1);
 vnj = rand(3, 1);
@@ -95,3 +97,5 @@ disp('numerical solution:');
 disp(dnr);
 disp('analytic solution');
 disp(dar);
+
+clear all;

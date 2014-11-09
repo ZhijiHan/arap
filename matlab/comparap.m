@@ -32,7 +32,7 @@ function [ arap ] = comparap( V, V2, R, N, W )
     vnj = V2(j, :);
     
     % Get the rotation matrix.
-    base = (e - 1) * 3;
+    base = (i - 1) * 3;
     r = R(base + 1 : base + 3, :);
     
     % Add this edge into arap energy.
