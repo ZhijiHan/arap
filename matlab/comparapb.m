@@ -18,9 +18,6 @@ function [ arap, darap ] = comparapb( V3, V, cid, C, N, W )
   % caller should guarantee V2(cid, :) equals to the constrained vertices
   % C.
   
-  % We decide to loop over all the edges to manually compute arap and darap
-  % for efficiency.
-  
   % Get the number of vertices.
   vnum = size(V, 1);
   
@@ -32,180 +29,129 @@ function [ arap, darap ] = comparapb( V3, V, cid, C, N, W )
   V2(fid, :) = V3;
   V2(cid, :) = C;
   
-  % Get edges.
-  [I, J, ~] = find(N);
+  % Compute E first.
+  E = compe(V, V2, N, W);
   
-  % Get the number of edges.
-  enum = length(I);
-  
-  % E is a 3 x 3 x vnum temporary matrix for computing R. We initialize
-  % R, P and S at the same time. The relationship between them: for each 3
-  % x 3 block:
+  % Given E, a (vnum x 3) x 3 matrix, we compute R, P and S. The
+  % relationship between them: for each 3 x 3 block in E:
   % [P, S] = polar(E);
   % R = P';
   % So P is the rotation matrix, S is the symmetric semi-positive definite
   % matrix. Both of P and S come from polar decomposition.
   % R is the rotation matrix in arap, which is the transpose of P.
-  E = zeros(3, 3, vnum);
   P = zeros(3, 3, vnum);
   S = zeros(3, 3, vnum);
   R = zeros(3, 3, vnum);
-  
-  % Discussion about dE: the trickest part of this function is to compute
-  % E's derivatives w.r.t V2. Let's do it step by step.
-  
-  % First, let's fix on a single Ei = E(:, :, i) and a single V2j = V2(j,
-  % :). dEi / dV2j should be a 3 x 3 x 3 matrix. Let's stack it as a 9 x 3
-  % matrix, where each row k representes Ei(k)'s derivatives w.r.t. V2j.
-  
-  % Second, what if we have another V2j? We need another 9 x 3 matrix to
-  % store it. In principle, we need a 9 x 3 x vnum matrix to hold all the
-  % derivatives w.r.t all the V2.
-  
-  % But this is just for a single Ei! We need a 9 x 3 x vnum matrix for
-  % each Ei, so finally we need to fill in a 9 x 3 x vnum x vnum matrix!
-  % This is the dimension of dE:
-  
-  % dimension         9             3           vnum            vnum
-  % explanation elements in Ei elements in V2j elements in V2 elemenst in E
-  dE = zeros(9, 3, vnum, vnum);
-  
-  % One caveat is that we need to skip those fixed vertices. We initialize
-  % a flag to determine whether a point is free or not.
-  isfree = ones(vnum, 1);
-  isfree(cid) = 0;
-  
-  % Now loop over all the edges to compute E and dE.
-  for e = 1 : enum
-    i = I(e);
-    j = J(e);
-    w = W(i, j);
-    voi = V(i, :)';
-    voj = V(j, :)';
-    vni = V2(i, :)';
-    vnj = V2(j, :)';
-    
-    % Update E.
-    E(:, :, i) = E(:, :, i) + w * (voi - voj) * (vni - vnj)';
-    
-    % Update dE. Explicitly, this is updating Ei because we only update Ei.
-    dEi = zeros(9, 3, vnum);
-    
-    % More specifically, we only need to update dEi(:, :, i) and dEi(:, :,
-    % j). So dEiix is a 3 x 3 matrix, each element is Ei's derivatives w.r.t
-    % V2(i, 1). dEiiy and dEiiz work similarly.
-    if isfree(i)
-      dEiix = w * (voi - voj) * [1 0 0];
-      dEiiy = w * (voi - voj) * [0 1 0];
-      dEiiz = w * (voi - voj) * [0 0 1];
-      dEi(:, :, i) = [dEiix(:), dEiiy(:), dEiiz(:)];
-    end
-    
-    % Compute dEijx, dEijy and dEijz.
-    if isfree(j)
-      dEijx = w * (voi - voj) * [-1 0 0];
-      dEijy = w * (voi - voj) * [0 -1 0];
-      dEijz = w * (voi - voj) * [0 0 -1];
-      dEi(:, :, j) = [dEijx(:), dEijy(:), dEijz(:)];
-    end
-    
-    dE(:, :, :, i) = dE(:, :, :, i) + dEi;
-  end
-  
-  % Now given E and dE, loop over all the edges again to compute arap and
-  % darap.
-  
-  % What is the initial value for arap?
-  arap = 0.0;
-  
-  % Discussion about darap:
-  % darap should be a vnum x 3 matrix, each element corresponds to a
-  % variable in V2.
-  
-  % What is the initial value for darap?
-  darap = zeros(vnum, 3);
-  
-  % Compute P, S and R first.
   for v = 1 : vnum
-    [P(:, :, v), S(:, :, v)] = polar(E(:, :, v));
+    base = (v - 1) * 3;
+    [P(:, :, v), S(:, :, v)] = polar(E(base + 1 : base + 3, :));
     R(:, :, v) = P(:, :, v)';
   end
   
-  % Now we have R, let's compute arap and darap.
-  for e = 1 : enum
-    i = I(e);
-    j = J(e);
-    w = W(i, j);
-    voi = V(i, :)';
-    voj = V(j, :)';
-    vni = V2(i, :)';
-    vnj = V2(j, :)';
-    r = R(:, :, i);
-    
-    % Remember we are now working on w * \|(vni - vnj) - r * (voi - voj)\|^2
-    arap = arap + w * norm((vni - vnj) - r * (voi - voj)) ^ 2;
-    
-    % Now we update darap. We first want to figure out the derivatives of
-    % the vector (vni - vnj) - r * (voi - voj) w.r.t. V2. This should be a
-    % 3 x 3 x vnum matrix. For each V2k, there is a 3 x 3 matrix, each row
-    % represents that vector's derivatives w.r.t V2k.
-    dv = zeros(3, 3, vnum);
-    
-    % Now what should we fill in? Let's first consider (vni - vnj), which
-    % should be easy: we only need to fill dv(:, :, i) and dv(:, :, j).
-    if isfree(i)
-      dv(:, :, i) = eye(3);
-    end
-    if isfree(j)
-      dv(:, :, j) = -eye(3);
-    end
-    
-    % The hard part is to figure out the influence from r. By definition
-    % dE(:, :, :, i) contains all the information about r's derivatives
-    % w.r.t. V2. Let's get E, P, S first:
-    p = r';
-    s = S(:, :, i);
-    % Then Let's loop over all the V2.
-    for v = 1 : vnum
-      if ~isfree(v)
-        continue;
-      end
-      % Then let's loop over all the elements in a specific V2v.
-      for k = 1 : 3
-        % Now what is r's derivatives w.r.t V2(v, k)?
-        de = dE(:, k, v, i);
-        de = reshape(de, 3, 3);
-        % Now we compute dp / dV2(v, k).
-        dp = dpolar(de, p, s);
-        % Since we know r = p', dr / dV2(v, k) is dp's transpose.
-        dr = dp';
-        % Now d(-r * (voi - voj)) / dV2(v, k) is a 3 x 1 column vector.
-        % This should be added into dv(:, k, v)
-        dv(:, k, v) = dv(:, k, v) - dr * (voi - voj);
-      end
-    end
-    
-    % Finally, given dv, we use dv to update darap. Let's flat dv into a 3
-    % x (3 x vnum) matrix, so each column is the derivative w.r.t a
-    % specific V2j(k).
-    dv = reshape(dv, 3, 3 * vnum);
-    
-    % Then we can compute the derivatives of
-    % w * \|(vni - vnj) - r * (voi - voj)\| ^ 2
-    % into a flat matrix.
-    dflat = w * 2 * ((vni - vnj) - r * (voi - voj))' * dv;
-    
-    % Now dflat is a 1 x (3 x vnum) row vector, we need to reshape it into
-    % a vnum x 3 matrix.
-    dflat = reshape(dflat, 3, vnum);
-    dflat = dflat';
-    
-    % Finally update darap.
-    darap = darap + dflat;
-  end
+  % Compute arap.
+  % reshape here is a little tricky. What we want for the 3rd argument is a
+  % (vnum x 3) x 3 matrix, each 3 x 3 block containing the rotation matrix.
+  % If we reshape P into a 3 x (vnum x 3) matrix, and P(:, i, j) will
+  % become the ((j - 1) * 3 + i)-th column in the reshaped matrix. So
+  % transposing it turns out to give us the correct layout for R.
+  arap = comparap(V, V2, reshape(P, 3, vnum * 3)', N, W);
   
-  % But wait, we need to eliminate those rows corresponding to fixed
-  % vertices.
+  % Now compute darap. The dimension for darap should be a vnum x 3 matrix,
+  % with each entry corresponding to the variable in V2.
+  darap = zeros(vnum, 3);
+  
+  % Before that, let's first initialize a flag to indicate which vertex is
+  % free variable, and which is fixed constraints.
+  isfree = ones(vnum, 1);
+  isfree(cid) = 0;
+  
+  % Now we loop over all the edges in arap, and add each edge's
+  % contributions to darap.
+  for i = 1 : vnum
+    % Get all the incident vertices from N.
+    [~, J, ~] = find(N(i, :));
+    % We first compute dEi, which is Ei's derivatives w.r.t V2. For each
+    % variable, dEi is a 3 x 3 matrix. We reshape it as a 9 x 1 column
+    % vector. For each vertex, we have a 9 x 3 matrix, so dEi should be a 9
+    % x 3 x vnum matrix.
+    dEi = zeros(9, 3, vnum);
+    % Loop over all the incident vertex.
+    for j = J
+      % For edge(i, j), we add w * (voi - voj) * (vni - vnj)' to Ei.
+      w = W(i, j);
+      voi = V(i, :)';
+      voj = V(j, :)';
+      if isfree(i)
+        dEiix = w * (voi - voj) * [1 0 0];
+        dEiiy = w * (voi - voj) * [0 1 0];
+        dEiiz = w * (voi - voj) * [0 0 1];
+        dEi(:, :, i) = dEi(:, :, i) + [dEiix(:), dEiiy(:), dEiiz(:)];
+      end
+
+      % Compute dEijx, dEijy and dEijz.
+      if isfree(j)
+        dEijx = w * (voi - voj) * [-1 0 0];
+        dEijy = w * (voi - voj) * [0 -1 0];
+        dEijz = w * (voi - voj) * [0 0 -1];
+        dEi(:, :, j) = dEi(:, :, j) + [dEijx(:), dEijy(:), dEijz(:)];
+      end
+    end
+    
+    % Get R, S, P for vertex i.
+    r = R(:, :, i);
+    s = S(:, :, i);
+    p = P(:, :, i);
+    for j = J
+      w = W(i, j);
+      voi = V(i, :)';
+      voj = V(j, :)';
+      vni = V2(i, :)';
+      vnj = V2(j, :)';
+      
+      % Now we are focusing on the edge w * \|(vni - vnj) - r * (voi -
+      % voj)\| ^ 2. 
+      
+      % For any variable x, the derivative can be rewritten as:
+      % 2 * w * ((vni - vnj) - r * (voi - voj))' * d((vni - vnj) - 
+      % r * (voi - voj)) / dx. So let's first cache it.
+      cachev = 2 * w * ((vni - vnj) - r * (voi - voj))';
+      
+      % The next problem is how to compute d((vni - vnj) - r * (voi - voj))
+      % / dx w.r.t. all the vnum x 3 variables. Note that for each variable
+      % we have a 3 x 1 gradient, so we have to allocate 3 x 3 x vnum
+      % space for it, with each column representing a gradient, the second
+      % 3 representing the 3 elements in a single vertex.
+      d = zeros(3, 3, vnum);
+      % First let's consider the derivates of (vni - vnj).
+      if isfree(i)
+        d(:, :, i) = eye(3);
+      end
+      if isfree(j)
+        d(:, :, j) = -eye(3);
+      end
+      
+      % Second, we have to compute d(-r * (voi - voj)) / dx, which is
+      % simply -(dr / dx) * (voi - voj).
+      for k = J
+        if ~isfree(k)
+          continue;
+        end
+        for l = 1 : 3
+          dei = reshape(dEi(:, l, k), 3, 3);
+          dr = dpolar(dei, p, s)';
+          d(:, l, k) = d(:, l, k) - dr * (voi - voj);
+        end
+      end
+      
+      % Now we have d, we can compute dv, which is this edge's derivatives
+      % w.r.t V2.
+      dv = reshape(cachev * reshape(d, 3, 3 * vnum), 3, vnum)';
+      
+      % After all is done, add dv to darap.
+      darap = darap + dv;
+    end
+  end
+  % But wait, we have to remove fixed constraints from darap.
   darap(cid, :) = [];
 end
 
