@@ -31,6 +31,7 @@ N = neighbor(F);
 
 % Initialize V and R.
 V2 = initv(V, W, cid, C);
+R = minir(V, V2, N, W);
 
 % Initialize V3.
 V3 = V2(fid, :);
@@ -40,4 +41,55 @@ V3 = V2(fid, :);
 disp('arap:');
 disp(arap);
 
-clear all;
+% Now, test with darap with forward-backward check.
+epsilon = 1e-8;
+tolerance = 0.03;
+
+% Collect all the relative errors.
+rels = zeros(length(fid), 3);
+for i = 1 : length(fid)
+  % Loop over all the free variables.
+  for j = 1 : 3
+    % Cache V2(fid, j)
+    cache = V2(fid(i), j);
+    
+    % Increment it.
+    V2(fid(i), j) = cache + epsilon;
+    arap2 = comparap(V, V2, R, N, W);
+    
+    % Decrement it.
+    V2(fid(i), j) = cache - epsilon;
+    arap3 = comparap(V, V2, R, N, W);
+    
+    % Reset.
+    V2(fid(i), j) = cache;
+    
+    % Compute numerical derivatives.
+    numer = (arap2 - arap3) / (2 * epsilon);
+    
+    % Get analytical derivatives.
+    analy = darap(i, j);
+    
+    disp('Numerical derivatives:');
+    disp(numer);
+    disp('Analytic derivatives:');
+    disp(analy);
+    
+    % Compute relative error.
+    if analy ~= 0
+      disp('Relative error:');
+      rel = abs((numer - analy) / analy);
+      disp(rel);
+      rels(i, j) = rel;
+      
+      % If relative error is greater than 1%, complain
+      if rel > tolerance
+        disp('Test failed!');
+      end
+    end
+  end
+end
+
+if max(max(rels)) < tolerance
+  disp('All tests passed!');
+end
