@@ -12,23 +12,37 @@ function [ arap, darap ] = comparapb( V3, V, cid, C, N, W )
   % arap = \sum w_{ij} \|p_i' - p_j' - r_i(p)(p_i - p_j)\|^2
   
   % V3 contains only the unknowns vertices. You can think of V3 as V3 =
-  % V2(fid, :), where fid is all the free vertex indices.
+  % V2(fid, :), where fid is all the free vertex indices. Since minFunc
+  % only accepts vector variables, if V3 is a vector, we will reshape it
+  % into a 3-column matrix.
   
   % cid is a column vector with all the indices of fixed variables. The
   % caller should guarantee V2(cid, :) equals to the constrained vertices
   % C.
-  
+
+  % The return value:
+  % - arap is the arap energy, it is a scalar;
+  % - darap is the column vector form of the vnum x 3 derivatives.
+  %   Unfortunately we have to follow the convention from minFunc to
+  %   columnize the vector before returning it.
+
   % Get the number of vertices.
   vnum = size(V, 1);
   
   % Build free variable index.
   fid = setdiff(1 : vnum, cid);
   
+  % Reshape V3 if necessary.
+  if size(V3, 2) == 1
+    rows = size(V3, 1);
+    V3 = reshape(V3, rows / 3, 3);
+  end
+
   % Build V2.
   V2 = V;
   V2(fid, :) = V3;
   V2(cid, :) = C;
-  
+
   % Compute E first.
   E = compe(V, V2, N, W);
   
@@ -153,5 +167,6 @@ function [ arap, darap ] = comparapb( V3, V, cid, C, N, W )
   end
   % But wait, we have to remove fixed constraints from darap.
   darap(cid, :) = [];
+  darap = darap(:);
 end
 
