@@ -37,12 +37,7 @@ arap = comparap(V, V2, R, N, W);
 disp(arap);
 
 % Build a temporary folder for displaying.
-mkdir display;
-offfile = 'display/arap.off';
-dmatfile = 'display/arap.dmat';
-writeoff(V, F, offfile);
-writedmat(C, dmatfile);
-system(['../build/demo_bin ', offfile, ' ', dmatfile]);
+showmodel(V, F, C);
 
 % Set the max number of iteration.
 maxiter = 50;
@@ -56,25 +51,23 @@ L = minivleft(W, cid);
 while iter < maxiter
   % Solve rotations.
   R = minir(V, V2, N, W);
-  
+
   % Compute the right hand side for minimizing vertices.
   rhs = minivright(V, R, cid, C, N, W);
-  
+
   % Write free solutions back to V2.
   % lux = rhs.
   % ly = rhs.
   % ux = y.
   y = l \ rhs;
   V2(fid, :) = u \ y;
-  
+
   % Compute arap energy.
   arap = comparap(V, V2, R, N, W);
   disp(arap);
-  
+
   % Display the model.
-  writeoff(V2, F, offfile);
-  writedmat(C, dmatfile);
-  system(['../build/demo_bin ', offfile, ' ', dmatfile]);
+  showmodel(V2, F, C);
 
   % Increment iter.
   iter = iter + 1;
