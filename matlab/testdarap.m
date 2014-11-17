@@ -41,6 +41,9 @@ V3 = V2(fid, :);
 disp('arap:');
 disp(arap);
 
+% Reshape darap because it is now a vector.
+darap = reshape(darap, length(darap) / 3, 3);
+
 % Now, test with darap with forward-backward check.
 epsilon = 1e-8;
 tolerance = 0.03;
