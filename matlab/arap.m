@@ -36,6 +36,14 @@ R = minir(V, V2, N, W);
 arap = comparap(V, V2, R, N, W);
 disp(arap);
 
+% Build a temporary folder for displaying.
+mkdir display;
+offfile = 'display/arap.off';
+dmatfile = 'display/arap.dmat';
+writeoff(V, F, offfile);
+writedmat(C, dmatfile);
+system(['../build/demo_bin ', offfile, ' ', dmatfile]);
+
 % Set the max number of iteration.
 maxiter = 50;
 iter = 0;
@@ -63,6 +71,11 @@ while iter < maxiter
   arap = comparap(V, V2, R, N, W);
   disp(arap);
   
+  % Display the model.
+  writeoff(V2, F, offfile);
+  writedmat(C, dmatfile);
+  system(['../build/demo_bin ', offfile, ' ', dmatfile]);
+
   % Increment iter.
   iter = iter + 1;
 end
